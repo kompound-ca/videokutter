@@ -526,8 +526,13 @@ class VideoCutterApp {
         
         console.log('Generating browser-compatible preview...');
         
-        // Show loading state
-        const videoContainer = this.videoPlayer.parentElement;
+        // Find video container (it may have changed due to fallback)
+        let videoContainer = document.querySelector('.video-container');
+        if (!videoContainer) {
+            console.error('Video container not found');
+            return;
+        }
+        
         const originalContent = videoContainer.innerHTML;
         
         videoContainer.innerHTML = `

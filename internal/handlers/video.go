@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -228,8 +229,15 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 		})
 	}
 
+	// URL decode the filename
+	decodedFilename, err := url.QueryUnescape(filename)
+	if err != nil {
+		decodedFilename = filename // fallback to original if decoding fails
+	}
+
 	// Log for debugging
-	fmt.Printf("Preview request for filename: %s\n", filename)
+	fmt.Printf("Preview request for filename: %s (decoded: %s)\n", filename, decodedFilename)
+	filename = decodedFilename
 
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
@@ -276,8 +284,15 @@ func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
 		})
 	}
 
+	// URL decode the filename
+	decodedFilename, err := url.QueryUnescape(filename)
+	if err != nil {
+		decodedFilename = filename // fallback to original if decoding fails
+	}
+
 	// Log for debugging
-	fmt.Printf("Generate preview request for filename: %s\n", filename)
+	fmt.Printf("Generate preview request for filename: %s (decoded: %s)\n", filename, decodedFilename)
+	filename = decodedFilename
 
 	inputPath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {

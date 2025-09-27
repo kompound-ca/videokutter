@@ -48,6 +48,11 @@ func main() {
 
 	// Static files
 	app.Static("/", "./static")
+	
+	// Favicon route to prevent 404
+	app.Get("/favicon.ico", func(c *fiber.Ctx) error {
+		return c.SendStatus(204) // No content
+	})
 
 	// API routes
 	api := app.Group("/api")
