@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  videocutter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kompound-videocutter
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - TEMP_DIR=/app/temp
+    volumes:
+      # Mount temp directory for persistent storage between container restarts
+      - videocutter_temp:/app/temp
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    # Resource limits to prevent container from consuming too much memory
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+volumes:
+  videocutter_temp:
+    driver: local

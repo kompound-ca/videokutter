@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kompound VideoCutter - Lossless Video Editor</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Kompound VideoCutter</h1>
+            <p>Lossless Video Editing for Kompound.ca</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section id="upload-section" class="card">
+            <h2>Upload Video</h2>
+            <div class="upload-area" id="upload-area">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p>Drag & drop your video here or <span class="browse-link">browse files</span></p>
+                    <p class="upload-info">Supported formats: MP4, AVI, MOV, MKV (max 10GB)</p>
+                </div>
+                <input type="file" id="video-input" accept=".mp4,.avi,.mov,.mkv" hidden>
+            </div>
+            <div id="upload-progress" class="progress-container" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p id="progress-text">Uploading...</p>
+            </div>
+        </section>
+
+        <!-- Video Player Section -->
+        <section id="player-section" class="card" style="display: none;">
+            <h2>Video Preview & Editing</h2>
+            <div class="video-container">
+                <video id="video-player" controls>
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            
+            <!-- Video Metadata -->
+            <div id="video-info" class="video-info">
+                <!-- Metadata will be populated here -->
+            </div>
+
+            <!-- Timeline Controls -->
+            <div class="timeline-container">
+                <h3>Select Cut Range</h3>
+                <div class="timeline-wrapper">
+                    <div class="timeline" id="timeline">
+                        <div class="timeline-track"></div>
+                        <div class="timeline-marker start-marker" id="start-marker" title="Start time">
+                            <span>Start</span>
+                        </div>
+                        <div class="timeline-marker end-marker" id="end-marker" title="End time">
+                            <span>End</span>
+                        </div>
+                        <div class="timeline-selection" id="timeline-selection"></div>
+                    </div>
+                </div>
+                
+                <!-- Time Inputs -->
+                <div class="time-inputs">
+                    <div class="time-input-group">
+                        <label for="start-time">Start Time:</label>
+                        <input type="text" id="start-time" placeholder="00:00:00" readonly>
+                    </div>
+                    <div class="time-input-group">
+                        <label for="end-time">End Time:</label>
+                        <input type="text" id="end-time" placeholder="00:00:00" readonly>
+                    </div>
+                    <div class="time-input-group">
+                        <label>Duration:</label>
+                        <span id="cut-duration">00:00:00</span>
+                    </div>
+                </div>
+
+                <!-- Cut Button -->
+                <button id="cut-button" class="btn btn-primary" disabled>Cut Video</button>
+            </div>
+        </section>
+
+        <!-- Processing Section -->
+        <section id="processing-section" class="card" style="display: none;">
+            <h2>Processing Video...</h2>
+            <div class="processing-animation">
+                <div class="spinner"></div>
+                <p id="processing-text">Cutting your video with FFmpeg...</p>
+            </div>
+        </section>
+
+        <!-- Download Section -->
+        <section id="download-section" class="card" style="display: none;">
+            <h2>Download Complete</h2>
+            <div class="download-content">
+                <div class="success-icon">✅</div>
+                <p>Your video has been cut successfully!</p>
+                <button id="download-button" class="btn btn-success">Download Cut Video</button>
+                <button id="new-video-button" class="btn btn-secondary">Upload New Video</button>
+            </div>
+        </section>
+
+        <!-- Error Section -->
+        <section id="error-section" class="card error-card" style="display: none;">
+            <h2>Error</h2>
+            <div class="error-content">
+                <div class="error-icon">❌</div>
+                <p id="error-message">An error occurred</p>
+                <button id="retry-button" class="btn btn-secondary">Try Again</button>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Kompound.ca - Video Cutting Tool</p>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
