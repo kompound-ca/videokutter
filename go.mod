@@ -1,6 +1,6 @@
 module github.com/kompound-ca/videocutter
 
-go 1.25.1
+go 1.22
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect

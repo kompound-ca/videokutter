@@ -33,7 +33,7 @@ A lossless video cutting web application for Kompound.ca, built with Go, Fiber, 
 ### Without Docker (Local Development)
 
 **Prerequisites:**
-- Go 1.21 or later
+- Go 1.22 or later
 - FFmpeg and FFprobe installed and available in PATH
 
 1. **Install dependencies**
