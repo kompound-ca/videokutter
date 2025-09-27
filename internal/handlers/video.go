@@ -266,6 +266,45 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	return c.SendFile(filePath)
 }
 
+// GeneratePreview creates a browser-compatible preview version
+func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	if filename == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Filename parameter required",
+		})
+	}
+
+	// Log for debugging
+	fmt.Printf("Generate preview request for filename: %s\n", filename)
+
+	inputPath := vh.fileService.GetFilePath(filename)
+	if !vh.fileService.FileExists(filename) {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: "Input video file not found",
+		})
+	}
+
+	// Generate preview filename
+	previewFilename, err := vh.videoService.GeneratePreview(inputPath, filename)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to generate preview: %v", err),
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Preview generated successfully",
+		Data: map[string]string{
+			"preview_filename": previewFilename,
+		},
+	})
+}
+
 // ParseDuration parses duration from string (in seconds) to time.Duration
 func ParseDuration(durationStr string) (time.Duration, error) {
 	seconds, err := strconv.ParseFloat(durationStr, 64)

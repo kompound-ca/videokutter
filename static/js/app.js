@@ -495,8 +495,12 @@ class VideoCutterApp {
                     <p><strong>Resolution:</strong> ${this.currentMetadata.resolution}</p>
                 </div>
                 <p class="fallback-note">The video cutting will work perfectly even without preview!</p>
+                <button class="btn btn-secondary" onclick="window.videoCutterApp.generatePreview()">Generate Preview (Slower)</button>
             </div>
         `;
+        
+        // Initialize timeline even without video preview
+        this.initializeTimeline();
     }
 
     // Show video error message
@@ -508,8 +512,79 @@ class VideoCutterApp {
                 <h3>Video Preview Error</h3>
                 <p>${message}</p>
                 <p>You can still use the timeline below to cut your video.</p>
+                <button class="btn btn-secondary" onclick="window.videoCutterApp.generatePreview()">Generate Preview (Slower)</button>
             </div>
         `;
+        
+        // Initialize timeline even with video error
+        this.initializeTimeline();
+    }
+
+    // Generate a browser-compatible preview
+    async generatePreview() {
+        if (!this.currentMetadata) return;
+        
+        console.log('Generating browser-compatible preview...');
+        
+        // Show loading state
+        const videoContainer = this.videoPlayer.parentElement;
+        const originalContent = videoContainer.innerHTML;
+        
+        videoContainer.innerHTML = `
+            <div class="video-fallback">
+                <div class="spinner"></div>
+                <h3>Generating Preview...</h3>
+                <p>Converting video to browser-compatible format...</p>
+                <p class="fallback-note">This may take a minute for large videos.</p>
+            </div>
+        `;
+        
+        try {
+            const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
+            const response = await fetch(`/api/generate-preview/${encodedFilename}`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to generate preview');
+            }
+            
+            const result = await response.json();
+            
+            if (result.success && result.data.preview_filename) {
+                // Load the generated preview
+                videoContainer.innerHTML = `
+                    <video id="video-player-preview" controls preload="metadata" style="width: 100%; border-radius: 8px;">
+                        <p>Your browser does not support video playback.</p>
+                    </video>
+                    <div class="video-info-overlay">
+                        <span id="current-time-display-preview">00:00:00</span>
+                    </div>
+                `;
+                
+                const previewPlayer = document.getElementById('video-player-preview');
+                const previewTimeDisplay = document.getElementById('current-time-display-preview');
+                
+                previewPlayer.src = `/api/preview/${encodeURIComponent(result.data.preview_filename)}`;
+                
+                // Update time display for preview
+                previewPlayer.addEventListener('timeupdate', () => {
+                    if (previewTimeDisplay) {
+                        previewTimeDisplay.textContent = this.formatDuration(previewPlayer.currentTime);
+                    }
+                });
+                
+                console.log('Preview generated successfully');
+            } else {
+                throw new Error(result.message || 'Preview generation failed');
+            }
+            
+        } catch (error) {
+            console.error('Preview generation error:', error);
+            // Restore original fallback content
+            videoContainer.innerHTML = originalContent;
+            this.showError(`Preview generation failed: ${error.message}`);
+        }
     }
 }
 

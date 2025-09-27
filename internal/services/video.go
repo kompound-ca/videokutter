@@ -180,6 +180,52 @@ func (vs *VideoService) GetTempDir() string {
 	return vs.tempDir
 }
 
+// GeneratePreview creates a browser-compatible preview using lightweight encoding
+func (vs *VideoService) GeneratePreview(inputPath string, originalFilename string) (string, error) {
+	// Generate preview filename
+	ext := filepath.Ext(originalFilename)
+	name := strings.TrimSuffix(filepath.Base(originalFilename), ext)
+	timestamp := time.Now().Format("20060102_150405")
+	previewFilename := fmt.Sprintf("%s_preview_%s.mp4", name, timestamp)
+	previewPath := filepath.Join(vs.tempDir, previewFilename)
+
+	// Use FFmpeg to create a lightweight H.264 preview
+	// This uses fast encoding settings to minimize processing time
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-c:v", "libx264", // H.264 codec (widely supported)
+		"-preset", "ultrafast", // Fastest encoding preset
+		"-crf", "28", // Reasonable quality vs size balance
+		"-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Ensure even dimensions
+		"-c:a", "aac", // AAC audio (widely supported)
+		"-b:a", "128k", // Reasonable audio bitrate
+		"-movflags", "+faststart", // Enable web streaming
+		"-f", "mp4", // MP4 container
+		"-y", // Overwrite output file if exists
+		previewPath)
+
+	// Capture stderr for error reporting
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to start ffmpeg: %w", err)
+	}
+
+	// Read stderr output
+	stderrOutput := make([]byte, 4096)
+	n, _ := stderr.Read(stderrOutput)
+	stderr.Close()
+
+	if err := cmd.Wait(); err != nil {
+		return "", fmt.Errorf("ffmpeg preview generation failed: %w, stderr: %s", err, string(stderrOutput[:n]))
+	}
+
+	return previewFilename, nil
+}
+
 // formatDuration converts time.Duration to HH:MM:SS.mmm format for ffmpeg
 func formatDuration(d time.Duration) string {
 	hours := int(d.Hours())
