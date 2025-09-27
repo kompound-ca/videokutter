@@ -183,6 +183,61 @@ header p {
     pointer-events: none;
 }
 
+.video-fallback {
+    background: #f7fafc;
+    border: 2px solid #cbd5e0;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.video-fallback.error {
+    border-color: #fed7d7;
+    background: #fef2f2;
+}
+
+.fallback-icon {
+    font-size: 3rem;
+    margin-bottom: 20px;
+}
+
+.video-fallback h3 {
+    color: #2d3748;
+    margin: 0 0 15px 0;
+    font-size: 1.3rem;
+}
+
+.video-fallback p {
+    color: #4a5568;
+    margin: 10px 0;
+    line-height: 1.5;
+}
+
+.fallback-info {
+    background: #edf2f7;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 20px 0;
+    border-left: 4px solid #667eea;
+}
+
+.fallback-info p {
+    margin: 5px 0;
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.fallback-note {
+    font-style: italic;
+    color: #718096 !important;
+    font-size: 0.9rem !important;
+}
+
 /* Video Info */
 .video-info {
     background: #f7fafc;

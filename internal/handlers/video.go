@@ -228,6 +228,9 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 		})
 	}
 
+	// Log for debugging
+	fmt.Printf("Preview request for filename: %s\n", filename)
+
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{

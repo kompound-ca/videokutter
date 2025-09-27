@@ -174,10 +174,29 @@ class VideoCutterApp {
 
     // Load video in player
     loadVideoPlayer() {
-        // Set video source to preview endpoint
         if (this.currentMetadata && this.currentMetadata.filename) {
-            this.videoPlayer.src = `/api/preview/${this.currentMetadata.filename}`;
-            console.log('Loading video:', this.videoPlayer.src);
+            // Check for AV1 codec compatibility
+            const isAV1 = this.currentMetadata.video_codec === 'av1';
+            
+            if (isAV1 && !this.checkAV1Support()) {
+                // Show fallback for AV1 videos
+                this.showAV1Fallback();
+            } else {
+                // Properly encode the filename for the URL
+                const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
+                this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+                console.log('Loading video:', this.videoPlayer.src);
+                
+                // Add error handler for video loading
+                this.videoPlayer.addEventListener('error', (e) => {
+                    console.error('Video loading error:', e);
+                    this.showVideoError('Video preview not supported by your browser.');
+                });
+                
+                this.videoPlayer.addEventListener('loadedmetadata', () => {
+                    console.log('Video loaded successfully');
+                });
+            }
         }
         
         this.displayVideoMetadata();
@@ -453,6 +472,44 @@ class VideoCutterApp {
         }
         
         return `${size.toFixed(1)} ${units[unitIndex]}`;
+    }
+
+    // Check if browser supports AV1 codec
+    checkAV1Support() {
+        const video = document.createElement('video');
+        return video.canPlayType('video/mp4; codecs="av01.0.05M.08"') !== '' ||
+               video.canPlayType('video/webm; codecs="av01.0.05M.08"') !== '';
+    }
+
+    // Show AV1 fallback message
+    showAV1Fallback() {
+        const videoContainer = this.videoPlayer.parentElement;
+        videoContainer.innerHTML = `
+            <div class="video-fallback">
+                <div class="fallback-icon">🎬</div>
+                <h3>AV1 Video Detected</h3>
+                <p>Your browser doesn't support AV1 video playback for preview.</p>
+                <p><strong>Don't worry!</strong> You can still cut this video using the timeline below.</p>
+                <div class="fallback-info">
+                    <p><strong>Video Duration:</strong> ${this.formatDuration(this.currentMetadata.duration / 1000000000)}</p>
+                    <p><strong>Resolution:</strong> ${this.currentMetadata.resolution}</p>
+                </div>
+                <p class="fallback-note">The video cutting will work perfectly even without preview!</p>
+            </div>
+        `;
+    }
+
+    // Show video error message
+    showVideoError(message) {
+        const videoContainer = this.videoPlayer.parentElement;
+        videoContainer.innerHTML = `
+            <div class="video-fallback error">
+                <div class="fallback-icon">⚠️</div>
+                <h3>Video Preview Error</h3>
+                <p>${message}</p>
+                <p>You can still use the timeline below to cut your video.</p>
+            </div>
+        `;
     }
 }
 
