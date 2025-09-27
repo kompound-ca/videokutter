@@ -3,9 +3,9 @@ package services
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -38,13 +38,11 @@ func (fs *FileService) SaveUploadedFile(src io.Reader, filename string) (string,
 		fmt.Printf("Warning: failed to cleanup previous files: %v\n", err)
 	}
 
-	// Generate unique filename with timestamp
+	// Generate safe random filename
 	ext := filepath.Ext(filename)
-	name := strings.TrimSuffix(filename, ext)
-	timestamp := time.Now().Format("20060102_150405")
-	uniqueFilename := fmt.Sprintf("%s_%s%s", name, timestamp, ext)
+	safeFilename := fs.generateSafeFilename(ext)
 	
-	filepath := filepath.Join(fs.tempDir, uniqueFilename)
+	filepath := filepath.Join(fs.tempDir, safeFilename)
 
 	// Create destination file
 	dst, err := os.Create(filepath)
@@ -85,10 +83,9 @@ func (fs *FileService) FileExists(filename string) bool {
 // GenerateOutputFilename creates a unique filename for processed video
 func (fs *FileService) GenerateOutputFilename(originalFilename string) string {
 	ext := filepath.Ext(originalFilename)
-	name := strings.TrimSuffix(filepath.Base(originalFilename), ext)
-	timestamp := time.Now().Format("20060102_150405")
 	
-	outputName := fmt.Sprintf("%s_cut_%s%s", name, timestamp, ext)
+	// Generate safe random filename with 'cut' suffix
+	outputName := fs.generateSafeFilename(ext, "cut")
 	fs.lastProcessed = outputName
 	
 	return outputName
@@ -146,4 +143,25 @@ func (fs *FileService) ValidateFileSize(size int64) error {
 		return fmt.Errorf("file size %d bytes exceeds maximum limit of %d bytes (10GB)", size, fs.maxFileSize)
 	}
 	return nil
+}
+
+// generateSafeFilename creates a safe filename with random words
+func (fs *FileService) generateSafeFilename(ext string, suffix ...string) string {
+	// Simple word lists for generating safe filenames
+	adjectives := []string{"happy", "swift", "bright", "calm", "fresh", "quick", "smart", "cool", "warm", "clean"}
+	nouns := []string{"cat", "dog", "bird", "fish", "tree", "rock", "star", "moon", "sun", "wave"}
+	
+	// Generate random filename
+	adj := adjectives[rand.Intn(len(adjectives))]
+	noun := nouns[rand.Intn(len(nouns))]
+	timestamp := time.Now().Format("150405") // HHMMSS format
+	
+	filename := fmt.Sprintf("%s_%s_%s", adj, noun, timestamp)
+	
+	// Add suffix if provided
+	if len(suffix) > 0 {
+		filename = fmt.Sprintf("%s_%s", filename, suffix[0])
+	}
+	
+	return filename + ext
 }

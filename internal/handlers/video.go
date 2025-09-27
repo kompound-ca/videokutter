@@ -189,6 +189,13 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 		})
 	}
 
+	// URL decode the filename
+	decodedFilename, err := url.QueryUnescape(filename)
+	if err != nil {
+		decodedFilename = filename // fallback to original if decoding fails
+	}
+	filename = decodedFilename
+
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{

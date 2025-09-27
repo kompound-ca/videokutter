@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -182,11 +183,8 @@ func (vs *VideoService) GetTempDir() string {
 
 // GeneratePreview creates a browser-compatible preview using lightweight encoding
 func (vs *VideoService) GeneratePreview(inputPath string, originalFilename string) (string, error) {
-	// Generate preview filename
-	ext := filepath.Ext(originalFilename)
-	name := strings.TrimSuffix(filepath.Base(originalFilename), ext)
-	timestamp := time.Now().Format("20060102_150405")
-	previewFilename := fmt.Sprintf("%s_preview_%s.mp4", name, timestamp)
+	// Generate safe preview filename
+	previewFilename := vs.generateSafePreviewFilename()
 	previewPath := filepath.Join(vs.tempDir, previewFilename)
 
 	// Use FFmpeg to create a lightweight H.264 preview
@@ -224,6 +222,20 @@ func (vs *VideoService) GeneratePreview(inputPath string, originalFilename strin
 	}
 
 	return previewFilename, nil
+}
+
+// generateSafePreviewFilename creates a safe filename for preview files
+func (vs *VideoService) generateSafePreviewFilename() string {
+	// Simple word lists for generating safe filenames
+	adjectives := []string{"bright", "swift", "smooth", "clear", "sharp", "quick", "light", "fast", "clean", "fresh"}
+	nouns := []string{"preview", "sample", "demo", "clip", "video", "media", "stream", "play", "view", "show"}
+	
+	// Generate random filename
+	adj := adjectives[rand.Intn(len(adjectives))]
+	noun := nouns[rand.Intn(len(nouns))]
+	timestamp := time.Now().Format("150405") // HHMMSS format
+	
+	return fmt.Sprintf("%s_%s_%s_preview.mp4", adj, noun, timestamp)
 }
 
 // formatDuration converts time.Duration to HH:MM:SS.mmm format for ffmpeg
