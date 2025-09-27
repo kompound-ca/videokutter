@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -96,7 +95,7 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	filepath := vh.fileService.GetFilePath(filename)
+	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
 			Success: false,
@@ -104,7 +103,7 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	metadata, err := vh.videoService.GetVideoMetadata(filepath)
+	metadata, err := vh.videoService.GetVideoMetadata(filePath)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false,
@@ -189,7 +188,7 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 		})
 	}
 
-	filepath := vh.fileService.GetFilePath(filename)
+	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
 			Success: false,
@@ -216,7 +215,7 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
-	return c.SendFile(filepath)
+	return c.SendFile(filePath)
 }
 
 // ParseDuration parses duration from string (in seconds) to time.Duration
