@@ -218,6 +218,51 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 	return c.SendFile(filePath)
 }
 
+// Preview serves the uploaded video file for preview
+func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	if filename == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Filename parameter required",
+		})
+	}
+
+	filePath := vh.fileService.GetFilePath(filename)
+	if !vh.fileService.FileExists(filename) {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: "File not found",
+		})
+	}
+
+	// Set appropriate headers for video streaming
+	ext := filepath.Ext(filename)
+	var contentType string
+	switch ext {
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".avi":
+		contentType = "video/x-msvideo"
+	case ".mov":
+		contentType = "video/quicktime"
+	case ".mkv":
+		contentType = "video/x-matroska"
+	case ".webm":
+		contentType = "video/webm"
+	case ".m4v":
+		contentType = "video/mp4"
+	default:
+		contentType = "application/octet-stream"
+	}
+
+	c.Set("Content-Type", contentType)
+	c.Set("Accept-Ranges", "bytes") // Enable seeking
+	c.Set("Cache-Control", "no-cache")
+
+	return c.SendFile(filePath)
+}
+
 // ParseDuration parses duration from string (in seconds) to time.Duration
 func ParseDuration(durationStr string) (time.Duration, error) {
 	seconds, err := strconv.ParseFloat(durationStr, 64)

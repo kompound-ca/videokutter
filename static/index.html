@@ -36,10 +36,11 @@
         <section id="player-section" class="card" style="display: none;">
             <h2>Video Editing</h2>
             <div class="video-container">
-                <div class="video-placeholder">
-                    <div class="placeholder-icon">🎬</div>
-                    <p>Video uploaded successfully!</p>
-                    <p class="placeholder-note">Use the timeline below to select your cut range, then click "Cut Video" to process.</p>
+                <video id="video-player" controls preload="metadata">
+                    <p>Your browser does not support video playback.</p>
+                </video>
+                <div class="video-info-overlay">
+                    <span id="current-time-display">00:00:00</span>
                 </div>
             </div>
             

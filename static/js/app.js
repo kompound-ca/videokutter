@@ -34,6 +34,7 @@ class VideoCutterApp {
         // Player elements
         this.videoPlayer = document.getElementById('video-player');
         this.videoInfo = document.getElementById('video-info');
+        this.currentTimeDisplay = document.getElementById('current-time-display');
 
         // Timeline elements
         this.timeline = document.getElementById('timeline');
@@ -173,13 +174,13 @@ class VideoCutterApp {
 
     // Load video in player
     loadVideoPlayer() {
-        // Set video source to a placeholder or handle video loading differently
-        // Since we can't directly load the uploaded file, we'll rely on metadata
+        // Set video source to preview endpoint
+        if (this.currentMetadata && this.currentMetadata.filename) {
+            this.videoPlayer.src = `/api/preview/${this.currentMetadata.filename}`;
+            console.log('Loading video:', this.videoPlayer.src);
+        }
+        
         this.displayVideoMetadata();
-        
-        // Initialize timeline with metadata instead of waiting for video load
-        this.initializeTimeline();
-        
         this.showSection('player-section');
     }
 
@@ -322,41 +323,76 @@ class VideoCutterApp {
         this.cutDuration.textContent = this.formatDuration(this.endTime - this.startTime);
     }
 
-    // Video progress update (optional)
+    // Video progress update
     updateVideoProgress() {
-        // Could add current time indicator on timeline here
+        if (this.videoPlayer && this.currentTimeDisplay) {
+            const currentTime = this.videoPlayer.currentTime;
+            this.currentTimeDisplay.textContent = this.formatDuration(currentTime);
+            
+            // Update timeline position indicator if desired
+            if (this.timelineDuration > 0) {
+                const percentage = (currentTime / this.timelineDuration) * 100;
+                // Could add a current position indicator on timeline here
+            }
+        }
     }
 
     // Cut video
     async cutVideo() {
-        if (!this.currentMetadata) return;
+        console.log('Cut video called');
+        
+        if (!this.currentMetadata) {
+            console.error('No metadata available');
+            this.showError('No video metadata available. Please upload a video first.');
+            return;
+        }
+        
+        console.log('Cut parameters:', {
+            filename: this.currentMetadata.filename,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            duration: this.timelineDuration
+        });
         
         this.showSection('processing-section');
         
         try {
+            const requestBody = {
+                filename: this.currentMetadata.filename,
+                start_time: Math.floor(this.startTime * 1000000000), // Convert to nanoseconds
+                end_time: Math.floor(this.endTime * 1000000000)
+            };
+            
+            console.log('Sending cut request:', requestBody);
+            
             const response = await fetch('/api/cut', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    filename: this.currentMetadata.filename,
-                    start_time: this.startTime * 1000000000, // Convert to nanoseconds
-                    end_time: this.endTime * 1000000000
-                })
+                body: JSON.stringify(requestBody)
             });
             
+            console.log('Cut response status:', response.status);
+            
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Cut operation failed');
+                const errorText = await response.text();
+                console.error('Cut response error:', errorText);
+                throw new Error(`Server error: ${response.status} - ${errorText}`);
             }
             
             const result = await response.json();
-            this.outputFilename = result.data.output_filename;
+            console.log('Cut result:', result);
             
-            this.showSection('download-section');
+            if (result.success && result.data) {
+                this.outputFilename = result.data.output_filename;
+                this.showSection('download-section');
+            } else {
+                throw new Error(result.message || 'Cut operation failed');
+            }
             
         } catch (error) {
+            console.error('Cut error:', error);
             this.showError(`Cut operation failed: ${error.message}`);
         }
     }

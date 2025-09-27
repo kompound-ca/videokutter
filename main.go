@@ -55,6 +55,7 @@ func main() {
 	api.Get("/metadata/:filename", videoHandler.GetMetadata)
 	api.Post("/cut", videoHandler.Cut)
 	api.Get("/download/:filename", videoHandler.Download)
+	api.Get("/preview/:filename", videoHandler.Preview)
 	api.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})

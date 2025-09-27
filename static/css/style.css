@@ -130,6 +130,7 @@ header p {
 /* Video Container */
 .video-container {
     margin-bottom: 30px;
+    position: relative;
 }
 
 #video-player {
@@ -167,6 +168,19 @@ header p {
     font-size: 0.9rem !important;
     color: #718096 !important;
     font-style: italic;
+}
+
+.video-info-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9rem;
+    pointer-events: none;
 }
 
 /* Video Info */
