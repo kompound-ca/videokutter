@@ -164,7 +164,8 @@ func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime,
 // ValidateVideoFormat checks if the video format is supported
 func (vs *VideoService) ValidateVideoFormat(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	supportedFormats := []string{".mp4", ".avi", ".mov", ".mkv"}
+	// Support common video container formats that can contain various codecs including AV1
+	supportedFormats := []string{".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 	
 	for _, format := range supportedFormats {
 		if ext == format {

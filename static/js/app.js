@@ -110,10 +110,19 @@ class VideoCutterApp {
 
     // File processing
     processFile(file) {
-        // Validate file type
-        const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/quicktime', 'video/x-matroska'];
-        if (!allowedTypes.includes(file.type)) {
-            this.showError('Unsupported file format. Please select MP4, AVI, MOV, or MKV files.');
+        // Validate file type - be more permissive with MIME types as they can vary
+        const allowedTypes = [
+            'video/mp4', 'video/avi', 'video/mov', 'video/quicktime', 
+            'video/x-matroska', 'video/webm', 'video/x-msvideo',
+            'application/octet-stream' // Some video files may have generic MIME type
+        ];
+        
+        // Also check file extension as backup
+        const fileName = file.name.toLowerCase();
+        const hasValidExtension = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'].some(ext => fileName.endsWith(ext));
+        
+        if (!allowedTypes.includes(file.type) && !hasValidExtension) {
+            this.showError('Unsupported file format. Please select MP4, AVI, MOV, MKV, WebM, or M4V files.');
             return;
         }
 
@@ -164,8 +173,13 @@ class VideoCutterApp {
 
     // Load video in player
     loadVideoPlayer() {
-        // Create object URL for local preview if needed
+        // Set video source to a placeholder or handle video loading differently
+        // Since we can't directly load the uploaded file, we'll rely on metadata
         this.displayVideoMetadata();
+        
+        // Initialize timeline with metadata instead of waiting for video load
+        this.initializeTimeline();
+        
         this.showSection('player-section');
     }
 
@@ -279,15 +293,26 @@ class VideoCutterApp {
 
     // Update timeline marker positions
     updateTimelineMarkers() {
-        const startPercentage = (this.startTime / this.timelineDuration) * 100;
-        const endPercentage = (this.endTime / this.timelineDuration) * 100;
+        if (!this.timelineDuration || this.timelineDuration === 0) return;
         
-        this.startMarker.style.left = `${startPercentage}%`;
-        this.endMarker.style.left = `${endPercentage}%`;
+        const startPercentage = Math.max(0, Math.min(100, (this.startTime / this.timelineDuration) * 100));
+        const endPercentage = Math.max(0, Math.min(100, (this.endTime / this.timelineDuration) * 100));
+        
+        // Account for marker width and timeline padding
+        const timelineWidth = this.timeline.clientWidth;
+        const markerWidth = 20; // matches CSS
+        const padding = 10; // matches CSS
+        const usableWidth = timelineWidth - (2 * padding) - markerWidth;
+        
+        const startPos = padding + (startPercentage / 100) * usableWidth;
+        const endPos = padding + (endPercentage / 100) * usableWidth;
+        
+        this.startMarker.style.left = `${startPos}px`;
+        this.endMarker.style.left = `${endPos}px`;
         
         // Update selection area
-        this.timelineSelection.style.left = `${startPercentage}%`;
-        this.timelineSelection.style.width = `${endPercentage - startPercentage}%`;
+        this.timelineSelection.style.left = `${startPos + markerWidth/2}px`;
+        this.timelineSelection.style.width = `${Math.max(0, endPos - startPos)}px`;
     }
 
     // Update time display

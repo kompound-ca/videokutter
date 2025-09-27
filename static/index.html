@@ -20,9 +20,9 @@
                 <div class="upload-content">
                     <div class="upload-icon">📁</div>
                     <p>Drag & drop your video here or <span class="browse-link">browse files</span></p>
-                    <p class="upload-info">Supported formats: MP4, AVI, MOV, MKV (max 10GB)</p>
+                    <p class="upload-info">Supported formats: MP4, AVI, MOV, MKV, WebM, M4V (max 10GB)</p>
                 </div>
-                <input type="file" id="video-input" accept=".mp4,.avi,.mov,.mkv" hidden>
+                <input type="file" id="video-input" accept=".mp4,.avi,.mov,.mkv,.webm,.m4v" hidden>
             </div>
             <div id="upload-progress" class="progress-container" style="display: none;">
                 <div class="progress-bar">
@@ -34,11 +34,13 @@
 
         <!-- Video Player Section -->
         <section id="player-section" class="card" style="display: none;">
-            <h2>Video Preview & Editing</h2>
+            <h2>Video Editing</h2>
             <div class="video-container">
-                <video id="video-player" controls>
-                    Your browser does not support the video tag.
-                </video>
+                <div class="video-placeholder">
+                    <div class="placeholder-icon">🎬</div>
+                    <p>Video uploaded successfully!</p>
+                    <p class="placeholder-note">Use the timeline below to select your cut range, then click "Cut Video" to process.</p>
+                </div>
             </div>
             
             <!-- Video Metadata -->

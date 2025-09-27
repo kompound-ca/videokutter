@@ -139,6 +139,36 @@ header p {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
+.video-placeholder {
+    background: #f7fafc;
+    border: 2px dashed #cbd5e0;
+    border-radius: 8px;
+    padding: 60px 20px;
+    text-align: center;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.placeholder-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+.video-placeholder p {
+    color: #4a5568;
+    margin: 10px 0;
+    font-size: 1.1rem;
+}
+
+.placeholder-note {
+    font-size: 0.9rem !important;
+    color: #718096 !important;
+    font-style: italic;
+}
+
 /* Video Info */
 .video-info {
     background: #f7fafc;
