@@ -511,6 +511,21 @@ header p {
     box-shadow: 0 4px 12px rgba(246, 173, 85, 0.1);
 }
 
+/* Upload Timer (for player section) */
+.upload-timer {
+    background: linear-gradient(135deg, #e6fffa, #b2f5ea);
+    border: 1px solid #38b2ac;
+    box-shadow: 0 4px 12px rgba(56, 178, 172, 0.1);
+}
+
+.upload-timer .timer-message {
+    color: #234e52;
+}
+
+.upload-timer .timer-warning {
+    color: #2d5016;
+}
+
 .timer-icon {
     font-size: 2.5rem;
     flex-shrink: 0;

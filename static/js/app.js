@@ -10,6 +10,7 @@ class VideoCutterApp {
         this.outputFilename = null;
         this.sessionID = null;
         this.countdownTimer = null;
+        this.uploadCountdownTimer = null;
         this.keepAliveInterval = null;
         
         this.initializeElements();
@@ -56,6 +57,8 @@ class VideoCutterApp {
         // Timer elements
         this.sessionTimer = document.getElementById('session-timer');
         this.countdownTime = document.getElementById('countdown-time');
+        this.uploadSessionTimer = document.getElementById('upload-session-timer');
+        this.uploadCountdownTime = document.getElementById('upload-countdown-time');
 
         // Error elements
         this.errorMessage = document.getElementById('error-message');
@@ -201,6 +204,9 @@ class VideoCutterApp {
             
             // Load video player first (fast)
             this.loadVideoPlayerImmediate();
+            
+            // Start upload countdown timer (for cutting phase)
+            this.startUploadCountdownTimer();
             
             // Fetch metadata in background after a short delay (slow)
             setTimeout(() => {
@@ -449,9 +455,26 @@ class VideoCutterApp {
         console.log('Loading video preview immediately:', this.videoPlayer.src);
         
         // Add error handler for video loading
-        this.videoPlayer.addEventListener('error', (e) => {
+        this.videoPlayer.addEventListener('error', async (e) => {
             console.error('Video loading error:', e);
-            this.showSimpleError('Video format may not be supported by your browser.');
+            // Attempt to generate a browser-compatible preview for problematic formats (e.g., MOV in Firefox)
+            try {
+                const original = this.uploadResponse ? this.uploadResponse.filename : null;
+                if (original && /\.mov$/i.test(original)) {
+                    // Call preview generation endpoint
+                    const resp = await fetch(`/api/generate-preview/${encodeURIComponent(original)}`, { method: 'POST' });
+                    const result = await resp.json();
+                    if (result.success && result.data && result.data.preview_filename) {
+                        const previewName = result.data.preview_filename;
+                        this.videoPlayer.src = `/api/preview/${encodeURIComponent(previewName)}`;
+                        console.log('Loading generated browser-compatible preview:', this.videoPlayer.src);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed generating preview:', err);
+            }
+            this.showSimpleError('Video preview is not supported by your browser. You can still cut the video below.');
         });
         
         this.videoPlayer.addEventListener('loadedmetadata', () => {
@@ -797,6 +820,8 @@ class VideoCutterApp {
             
             if (result.success && result.data) {
                 this.outputFilename = result.data.output_filename;
+                // Stop upload countdown since video is now cut
+                this.stopUploadCountdownTimer();
                 this.showSection('download-section');
                 this.startCountdownTimer();
             } else {
@@ -880,7 +905,99 @@ class VideoCutterApp {
         this.initializeTimeline();
     }
     
-    // Session Timer Methods
+    // Upload Session Timer Methods (for cutting phase)
+    async startUploadCountdownTimer() {
+        if (!this.sessionID) {
+            console.warn('No session ID available for upload countdown timer');
+            return;
+        }
+        
+        // Show the upload timer
+        if (this.uploadSessionTimer) {
+            this.uploadSessionTimer.style.display = 'flex';
+        }
+        
+        // Clear any existing upload timer
+        this.stopUploadCountdownTimer();
+        
+        // Start upload countdown update interval
+        this.updateUploadCountdown();
+        this.uploadCountdownTimer = setInterval(() => {
+            this.updateUploadCountdown();
+        }, 1000);
+    }
+    
+    stopUploadCountdownTimer() {
+        if (this.uploadCountdownTimer) {
+            clearInterval(this.uploadCountdownTimer);
+            this.uploadCountdownTimer = null;
+        }
+        // Hide the upload timer
+        if (this.uploadSessionTimer) {
+            this.uploadSessionTimer.style.display = 'none';
+        }
+    }
+    
+    async updateUploadCountdown() {
+        if (!this.sessionID || !this.uploadCountdownTime) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                // Only update if we're in the 'cut' phase (not processed yet)
+                if (result.data.phase === 'cut') {
+                    const remainingSeconds = result.data.remaining_seconds;
+                    
+                    if (remainingSeconds <= 0) {
+                        this.onUploadSessionExpired();
+                        return;
+                    }
+                    
+                    // Update countdown display
+                    this.uploadCountdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    
+                    // Update timer styling based on remaining time
+                    this.updateUploadTimerStyling(remainingSeconds);
+                } else {
+                    // Video was cut, stop upload timer
+                    this.stopUploadCountdownTimer();
+                }
+            } else {
+                console.warn('Failed to get upload session time remaining:', result.error);
+            }
+        } catch (error) {
+            console.error('Error updating upload countdown:', error);
+        }
+    }
+    
+    updateUploadTimerStyling(remainingSeconds) {
+        const countdownElement = this.uploadCountdownTime;
+        
+        // Remove existing classes
+        countdownElement.classList.remove('warning', 'critical');
+        
+        if (remainingSeconds <= 30) {
+            // Critical - under 30 seconds
+            countdownElement.classList.add('critical');
+        } else if (remainingSeconds <= 60) {
+            // Warning - under 1 minute
+            countdownElement.classList.add('warning');
+        }
+    }
+    
+    onUploadSessionExpired() {
+        // Stop the upload timer
+        this.stopUploadCountdownTimer();
+        
+        console.log('Upload session expired - video has been deleted');
+        this.showError('Your upload session has expired. The video has been automatically deleted. Please upload a new video.');
+    }
+
+    // Download Session Timer Methods (for download phase)
     async startCountdownTimer() {
         if (!this.sessionID) {
             console.warn('No session ID available for countdown timer');
@@ -923,18 +1040,23 @@ class VideoCutterApp {
             const result = await response.json();
             
             if (result.success && result.data) {
-                const remainingSeconds = result.data.remaining_seconds;
-                
-                if (remainingSeconds <= 0) {
-                    this.onSessionExpired();
-                    return;
+                // Only update if we're in the 'download' phase (video was processed)
+                if (result.data.phase === 'download') {
+                    const remainingSeconds = result.data.remaining_seconds;
+                    
+                    if (remainingSeconds <= 0) {
+                        this.onSessionExpired();
+                        return;
+                    }
+                    
+                    // Update countdown display
+                    this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    
+                    // Update timer styling based on remaining time
+                    this.updateTimerStyling(remainingSeconds);
+                } else {
+                    console.log('Session not in download phase yet');
                 }
-                
-                // Update countdown display
-                this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
-                
-                // Update timer styling based on remaining time
-                this.updateTimerStyling(remainingSeconds);
                 
             } else {
                 console.warn('Failed to get session time remaining:', result.error);
@@ -1018,6 +1140,7 @@ class VideoCutterApp {
     resetApp() {
         // Stop any running timers
         this.stopCountdownTimer();
+        this.stopUploadCountdownTimer();
         
         // Reset all state
         this.currentMetadata = null;
