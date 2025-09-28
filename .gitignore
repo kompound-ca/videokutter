@@ -56,3 +56,7 @@ ehthumbs.db
 Thumbs.db
 
 # WARP.md
+WARP.md
+
+compose.yaml
+docker-compose.yml
