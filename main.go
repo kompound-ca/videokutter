@@ -83,7 +83,7 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s", port)
-	if err := app.Listen(":" + port); err != nil {
+	if err := app.Listen("0.0.0.0:" + port); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 	}
 }

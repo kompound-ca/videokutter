@@ -1,64 +1,35 @@
 # Multi-stage Dockerfile for Kompound VideoCutter
 
-# Build stage
+# Build stage - use golang:alpine for faster builds
 FROM golang:1.22-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+# Install build tools
+RUN apk add --no-cache ca-certificates git
 
-# Set working directory
 WORKDIR /app
 
-# Copy go mod files
+# Copy go files for dependency caching
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# Copy source and build
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-w -s' -o videocutter .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o videocutter .
+# Runtime stage - minimal Alpine with FFmpeg
+FROM alpine:3.19
 
-# Runtime stage
-FROM alpine:latest
-
-# Install runtime dependencies including FFmpeg
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    ffmpeg \
-    && rm -rf /var/cache/apk/*
-
-# Create app user for security
-RUN adduser -D -s /bin/sh appuser
-
-# Set working directory
+# Install runtime dependencies and create user in single layer
+RUN apk add --no-cache ffmpeg ca-certificates wget && \
+    adduser -D appuser && \
+    mkdir -p /app/temp
 WORKDIR /app
-
-# Copy built binary from builder stage
-COPY --from=builder /app/videocutter .
-
-# Copy static files
-COPY --from=builder /app/static ./static
-
-# Create temp directory and set permissions
-RUN mkdir -p /app/temp && chown -R appuser:appuser /app
-
-# Switch to non-root user
+COPY --from=builder --chown=appuser:appuser /app/videocutter .
+COPY --from=builder --chown=appuser:appuser /app/static ./static
 USER appuser
 
-# Expose port
+# Environment and runtime config
+ENV PORT=8080 TEMP_DIR=/app/temp
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
-
-# Set environment variables
-ENV PORT=8080
-ENV TEMP_DIR=/app/temp
-
-# Run the application
+HEALTHCHECK --interval=30s --timeout=5s --retries=2 CMD wget -q --spider http://localhost:8080/api/health || exit 1
 CMD ["./videocutter"]

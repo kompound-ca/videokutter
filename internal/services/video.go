@@ -140,23 +140,10 @@ func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime,
 		"-y", // Overwrite output file if exists
 		outputPath)
 
-	// Capture stderr for error reporting
-	stderr, err := cmd.StderrPipe()
+	// Run command and capture output
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start ffmpeg: %w", err)
-	}
-
-	// Read stderr output
-	stderrOutput := make([]byte, 4096)
-	n, _ := stderr.Read(stderrOutput)
-	stderr.Close()
-
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %w, stderr: %s", err, string(stderrOutput[:n]))
+		return fmt.Errorf("ffmpeg failed: %w, stderr: %s", err, string(output))
 	}
 
 	return nil
@@ -202,23 +189,10 @@ func (vs *VideoService) GeneratePreview(inputPath string, originalFilename strin
 		"-y", // Overwrite output file if exists
 		previewPath)
 
-	// Capture stderr for error reporting
-	stderr, err := cmd.StderrPipe()
+	// Run command and capture output
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start ffmpeg: %w", err)
-	}
-
-	// Read stderr output
-	stderrOutput := make([]byte, 4096)
-	n, _ := stderr.Read(stderrOutput)
-	stderr.Close()
-
-	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("ffmpeg preview generation failed: %w, stderr: %s", err, string(stderrOutput[:n]))
+		return "", fmt.Errorf("ffmpeg preview generation failed: %w, stderr: %s", err, string(output))
 	}
 
 	return previewFilename, nil
