@@ -36,16 +36,6 @@
         <section id="player-section" class="card" style="display: none;">
             <h2>Video Editing</h2>
             
-            <!-- Upload Session Timer -->
-            <div id="upload-session-timer" class="session-timer upload-timer" style="display: none;">
-                <div class="timer-content">
-                    <p class="timer-message">Time remaining to cut your video:</p>
-                    <div class="countdown-display">
-                        <span id="upload-countdown-time">5:00</span>
-                    </div>
-                    <p class="timer-warning">The uploaded video will be automatically deleted after this timer expires.</p>
-                </div>
-            </div>
             
             <div class="video-container">
                 <video id="video-player" controls preload="metadata">
@@ -114,16 +104,6 @@
                 <div class="success-icon">✅</div>
                 <p>Your video has been cut successfully!</p>
                 
-                <!-- Session Timer -->
-                <div id="session-timer" class="session-timer">
-                    <div class="timer-content">
-                        <p class="timer-message">Time remaining to download:</p>
-                        <div class="countdown-display">
-                            <span id="countdown-time">5:00</span>
-                        </div>
-                        <p class="timer-warning">The cut video will be automatically deleted after this timer expires.</p>
-                    </div>
-                </div>
                 
                 <button id="download-button" class="btn btn-success">Download Cut Video</button>
                 <button id="new-video-button" class="btn btn-secondary">Upload New Video</button>

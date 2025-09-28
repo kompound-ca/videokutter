@@ -9,9 +9,7 @@ class VideoCutterApp {
         this.endTime = 0;
         this.outputFilename = null;
         this.sessionID = null;
-        this.countdownTimer = null;
-        this.uploadCountdownTimer = null;
-        this.keepAliveInterval = null;
+        this.sessionTimer = null;
         
         this.initializeElements();
         this.bindEvents();
@@ -54,18 +52,10 @@ class VideoCutterApp {
         this.downloadButton = document.getElementById('download-button');
         this.newVideoButton = document.getElementById('new-video-button');
         
-        // Timer elements
-        this.sessionTimer = document.getElementById('session-timer');
-        this.countdownTime = document.getElementById('countdown-time');
-        this.uploadSessionTimer = document.getElementById('upload-session-timer');
-        this.uploadCountdownTime = document.getElementById('upload-countdown-time');
-        
-        console.log('Timer elements initialized:', {
-            sessionTimer: !!this.sessionTimer,
-            countdownTime: !!this.countdownTime,
-            uploadSessionTimer: !!this.uploadSessionTimer,
-            uploadCountdownTime: !!this.uploadCountdownTime
-        });
+        // Timer elements (will be dynamically set)
+        this.timerElement = null;
+        this.timerMessage = null;
+        this.timerCountdown = null;
 
         // Error elements
         this.errorMessage = document.getElementById('error-message');
@@ -218,11 +208,10 @@ class VideoCutterApp {
                 this.fetchVideoMetadata(); // Don't await - run in parallel
             }, 100); // Small delay to let video start loading first
             
-            // Start upload countdown timer after UI elements are ready
+            // Start timer for cutting phase
             setTimeout(() => {
-                console.log('Attempting to start upload countdown timer...');
-                this.startUploadCountdownTimer();
-            }, 500); // Delay to ensure DOM elements are ready
+                this.startSessionTimer('cut');
+            }, 500);
             
         } catch (error) {
             this.progressContainer.style.display = 'none';
@@ -830,11 +819,9 @@ class VideoCutterApp {
             
             if (result.success && result.data) {
                 this.outputFilename = result.data.output_filename;
-                // Stop upload countdown since video is now cut
-                this.stopUploadCountdownTimer();
                 this.showSection('download-section');
-                console.log('About to start download countdown timer...');
-                this.startCountdownTimer();
+                // Start timer for download phase
+                this.startSessionTimer('download');
             } else {
                 throw new Error(result.message || 'Cut operation failed');
             }
@@ -916,148 +903,90 @@ class VideoCutterApp {
         this.initializeTimeline();
     }
     
-    // Upload Session Timer Methods (for cutting phase)
-    async startUploadCountdownTimer() {
-        console.log('Starting upload countdown timer with sessionID:', this.sessionID);
-        if (!this.sessionID) {
-            console.warn('No session ID available for upload countdown timer');
-            return;
-        }
-        
-        // Show the upload timer
-        console.log('Upload timer element:', this.uploadSessionTimer);
-        if (this.uploadSessionTimer) {
-            this.uploadSessionTimer.style.display = 'flex';
-            console.log('Upload timer displayed');
-        } else {
-            console.error('Upload timer element not found');
-        }
-        
-        // Clear any existing upload timer
-        this.stopUploadCountdownTimer();
-        
-        // Start upload countdown update interval
-        this.updateUploadCountdown();
-        this.uploadCountdownTimer = setInterval(() => {
-            this.updateUploadCountdown();
-        }, 1000);
-    }
-    
-    stopUploadCountdownTimer() {
-        if (this.uploadCountdownTimer) {
-            clearInterval(this.uploadCountdownTimer);
-            this.uploadCountdownTimer = null;
-        }
-        // Hide the upload timer
-        if (this.uploadSessionTimer) {
-            this.uploadSessionTimer.style.display = 'none';
-        }
-    }
-    
-    async updateUploadCountdown() {
-        if (!this.sessionID || !this.uploadCountdownTime) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
-            const result = await response.json();
-            
-            console.log('Upload countdown API response:', result);
-            
-            if (result.success && result.data) {
-                console.log('Session phase:', result.data.phase, 'Remaining seconds:', result.data.remaining_seconds);
-                // Only update if we're in the 'cut' phase (not processed yet)
-                if (result.data.phase === 'cut') {
-                    const remainingSeconds = result.data.remaining_seconds;
-                    
-                    if (remainingSeconds <= 0) {
-                        this.onUploadSessionExpired();
-                        return;
-                    }
-                    
-                    // Update countdown display
-                    console.log('Updating upload countdown to:', this.formatCountdown(remainingSeconds));
-                    if (this.uploadCountdownTime) {
-                        this.uploadCountdownTime.textContent = this.formatCountdown(remainingSeconds);
-                    } else {
-                        console.error('Upload countdown time element not found');
-                    }
-                    
-                    // Update timer styling based on remaining time
-                    this.updateUploadTimerStyling(remainingSeconds);
-                } else {
-                    console.log('Not in cut phase, stopping upload timer');
-                    // Video was cut, stop upload timer
-                    this.stopUploadCountdownTimer();
-                }
-            } else {
-                console.warn('Failed to get upload session time remaining:', result.error || result.message);
-            }
-        } catch (error) {
-            console.error('Error updating upload countdown:', error);
-        }
-    }
-    
-    updateUploadTimerStyling(remainingSeconds) {
-        const countdownElement = this.uploadCountdownTime;
-        
-        // Remove existing classes
-        countdownElement.classList.remove('warning', 'critical');
-        
-        if (remainingSeconds <= 30) {
-            // Critical - under 30 seconds
-            countdownElement.classList.add('critical');
-        } else if (remainingSeconds <= 60) {
-            // Warning - under 1 minute
-            countdownElement.classList.add('warning');
-        }
-    }
-    
-    onUploadSessionExpired() {
-        // Stop the upload timer
-        this.stopUploadCountdownTimer();
-        
-        console.log('Upload session expired - video has been deleted');
-        this.showError('Your upload session has expired. The video has been automatically deleted. Please upload a new video.');
-    }
 
-    // Download Session Timer Methods (for download phase)
-    async startCountdownTimer() {
-        console.log('Starting download countdown timer with sessionID:', this.sessionID);
+    }
+    
+    // Unified Session Timer Methods
+    async startSessionTimer(phase) {
+        console.log(`Starting session timer for ${phase} phase with sessionID:`, this.sessionID);
+        
         if (!this.sessionID) {
-            console.warn('No session ID available for countdown timer');
+            console.warn('No session ID available for session timer');
             return;
         }
         
-        // Clear any existing timers
-        this.stopCountdownTimer();
+        // Stop any existing timer
+        this.stopSessionTimer();
         
-        // Start keep-alive interval (every 2 minutes)
-        this.keepAliveInterval = setInterval(() => {
-            this.sendKeepAlive();
-        }, 2 * 60 * 1000);
+        // Show and update the timer immediately
+        this.showTimer(phase);
+        await this.updateTimer();
         
-        // Start countdown update interval
-        this.updateCountdown();
-        this.countdownTimer = setInterval(() => {
-            this.updateCountdown();
+        // Start timer update interval
+        this.sessionTimer = setInterval(async () => {
+            await this.updateTimer();
         }, 1000);
     }
     
-    stopCountdownTimer() {
-        if (this.countdownTimer) {
-            clearInterval(this.countdownTimer);
-            this.countdownTimer = null;
+    stopSessionTimer() {
+        if (this.sessionTimer) {
+            clearInterval(this.sessionTimer);
+            this.sessionTimer = null;
         }
-        if (this.keepAliveInterval) {
-            clearInterval(this.keepAliveInterval);
-            this.keepAliveInterval = null;
-        }
+        this.hideTimer();
     }
     
-    async updateCountdown() {
-        if (!this.sessionID || !this.countdownTime) {
+    showTimer(phase) {
+        // Determine which section to show timer in
+        const targetSection = phase === 'cut' ? 'player-section' : 'download-section';
+        const section = document.getElementById(targetSection);
+        
+        if (!section) return;
+        
+        // Remove any existing timer
+        this.hideTimer();
+        
+        // Create timer element
+        const timerElement = document.createElement('div');
+        timerElement.className = 'session-timer unified-timer';
+        timerElement.id = 'unified-timer';
+        
+        // Set up timer message based on phase
+        const message = phase === 'cut' 
+            ? 'You have {TIME} remaining to cut your video'
+            : 'You have {TIME} remaining to download your video';
+        
+        // Create simple timer HTML
+        timerElement.innerHTML = `
+            <div class="timer-content">
+                <p class="timer-message">${message.replace('{TIME}', '<span class="countdown-time">5:00</span>')}</p>
+            </div>
+        `;
+        
+        // Insert timer at the beginning of the section
+        section.insertBefore(timerElement, section.firstElementChild.nextElementSibling);
+        
+        // Store references for easy updates
+        this.timerElement = timerElement;
+        this.timerMessage = timerElement.querySelector('.timer-message');
+        this.timerCountdown = timerElement.querySelector('.countdown-time');
+    }
+    
+    hideTimer() {
+        // Remove dynamic timer if it exists
+        const existingTimer = document.getElementById('unified-timer');
+        if (existingTimer) {
+            existingTimer.remove();
+        }
+        
+        // Clear references
+        this.timerElement = null;
+        this.timerMessage = null;
+        this.timerCountdown = null;
+    }
+    
+    async updateTimer() {
+        if (!this.sessionID || !this.timerCountdown) {
             return;
         }
         
@@ -1065,116 +994,46 @@ class VideoCutterApp {
             const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
             const result = await response.json();
             
-            console.log('Download countdown API response:', result);
-            
             if (result.success && result.data) {
-                console.log('Download phase:', result.data.phase, 'Remaining seconds:', result.data.remaining_seconds);
-                // Only update if we're in the 'download' phase (video was processed)
-                if (result.data.phase === 'download') {
-                    const remainingSeconds = result.data.remaining_seconds;
-                    
-                    if (remainingSeconds <= 0) {
-                        this.onSessionExpired();
-                        return;
-                    }
-                    
-                    // Update countdown display
-                    console.log('Updating download countdown to:', this.formatCountdown(remainingSeconds));
-                    if (this.countdownTime) {
-                        this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
-                    } else {
-                        console.error('Download countdown time element not found');
-                    }
-                    
-                    // Update timer styling based on remaining time
-                    this.updateTimerStyling(remainingSeconds);
-                } else {
-                    console.log('Session not in download phase yet, phase is:', result.data.phase);
+                const remainingSeconds = result.data.remaining_seconds;
+                const phase = result.data.phase;
+                
+                if (remainingSeconds <= 0) {
+                    this.onTimerExpired(phase);
+                    return;
                 }
+                
+                // Update countdown display
+                this.timerCountdown.textContent = this.formatTime(remainingSeconds);
                 
             } else {
                 console.warn('Failed to get session time remaining:', result.error);
             }
         } catch (error) {
-            console.error('Error updating countdown:', error);
+            console.error('Error updating timer:', error);
         }
     }
     
-    async sendKeepAlive() {
-        if (!this.sessionID) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/api/cleanup/keepalive/${this.sessionID}`, {
-                method: 'POST'
-            });
-            const result = await response.json();
-            
-            if (!result.success) {
-                console.warn('Keep-alive failed:', result.error);
-            }
-        } catch (error) {
-            console.error('Error sending keep-alive:', error);
-        }
-    }
-    
-    formatCountdown(seconds) {
+    formatTime(seconds) {
         const minutes = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${minutes}:${secs.toString().padStart(2, '0')}`;
     }
     
-    updateTimerStyling(remainingSeconds) {
-        const countdownElement = this.countdownTime;
-        const timerElement = this.sessionTimer;
+    onTimerExpired(phase) {
+        this.stopSessionTimer();
         
-        // Remove existing classes
-        countdownElement.classList.remove('warning', 'critical');
-        timerElement.classList.remove('expired');
+        const message = phase === 'cut'
+            ? 'Your upload session has expired. The video has been automatically deleted. Please upload a new video.'
+            : 'Your download session has expired. The video file has been automatically deleted. Please upload a new video.';
         
-        if (remainingSeconds <= 30) {
-            // Critical - under 30 seconds
-            countdownElement.classList.add('critical');
-        } else if (remainingSeconds <= 60) {
-            // Warning - under 1 minute
-            countdownElement.classList.add('warning');
-        }
-    }
-    
-    onSessionExpired() {
-        // Stop the timer
-        this.stopCountdownTimer();
-        
-        // Update UI to show expired state
-        if (this.countdownTime) {
-            this.countdownTime.textContent = '0:00';
-        }
-        if (this.sessionTimer) {
-            this.sessionTimer.classList.add('expired');
-            const message = this.sessionTimer.querySelector('.timer-message');
-            if (message) {
-                message.textContent = 'Session expired!';
-            }
-            const warning = this.sessionTimer.querySelector('.timer-warning');
-            if (warning) {
-                warning.textContent = 'The video file has been automatically deleted. Please upload a new video to continue.';
-            }
-        }
-        
-        // Disable download button
-        if (this.downloadButton) {
-            this.downloadButton.disabled = true;
-            this.downloadButton.textContent = 'File Expired';
-        }
-        
-        console.log('Session expired - file has been deleted');
+        console.log(`Session expired - ${phase} phase`);
+        this.showError(message);
     }
     
     resetApp() {
         // Stop any running timers
-        this.stopCountdownTimer();
-        this.stopUploadCountdownTimer();
+        this.stopSessionTimer();
         
         // Reset all state
         this.currentMetadata = null;
