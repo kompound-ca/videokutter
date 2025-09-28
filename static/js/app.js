@@ -903,9 +903,6 @@ class VideoCutterApp {
         this.initializeTimeline();
     }
     
-
-    }
-    
     // Unified Session Timer Methods
     async startSessionTimer(phase) {
         console.log(`Starting session timer for ${phase} phase with sessionID:`, this.sessionID);
