@@ -137,7 +137,7 @@ class VideoCutterApp {
         this.uploadFile(file);
     }
 
-    // Upload file to server
+    // Upload file to server with progress tracking
     async uploadFile(file) {
         const formData = new FormData();
         formData.append('video', file);
@@ -148,32 +148,209 @@ class VideoCutterApp {
         this.progressText.textContent = 'Uploading...';
 
         try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Upload failed');
+            // Use XMLHttpRequest for better upload progress tracking
+            const response = await this.uploadWithProgress(formData);
+            
+            if (!response.success) {
+                throw new Error(response.message || 'Upload failed');
             }
 
-            const result = await response.json();
-            this.currentMetadata = result.data;
+            // Store upload response data
+            this.uploadResponse = response.data;
             
             this.progressFill.style.width = '100%';
-            this.progressText.textContent = 'Upload complete!';
+            this.progressText.textContent = 'Upload complete! Loading metadata...';
+            
+            // Fetch metadata after upload
+            await this.fetchVideoMetadata();
             
             // Load video in player
             this.loadVideoPlayer();
             
         } catch (error) {
+            this.progressContainer.style.display = 'none';
             this.showError(`Upload failed: ${error.message}`);
         }
     }
 
+    // Upload with XMLHttpRequest for progress tracking
+    uploadWithProgress(formData) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    this.progressFill.style.width = `${percentComplete}%`;
+                    this.progressText.textContent = `Uploading... ${percentComplete}%`;
+                }
+            });
+            
+            // Handle response
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        resolve(response);
+                    } catch (e) {
+                        reject(new Error('Invalid server response'));
+                    }
+                } else {
+                    try {
+                        const errorResponse = JSON.parse(xhr.responseText);
+                        reject(new Error(errorResponse.message || `Server error: ${xhr.status}`));
+                    } catch (e) {
+                        reject(new Error(`Server error: ${xhr.status}`));
+                    }
+                }
+            });
+            
+            xhr.addEventListener('error', () => {
+                reject(new Error('Network error occurred during upload'));
+            });
+            
+            xhr.addEventListener('timeout', () => {
+                reject(new Error('Upload timed out'));
+            });
+            
+            // Set timeout for large files (30 minutes)
+            xhr.timeout = 30 * 60 * 1000;
+            
+            // Send request
+            xhr.open('POST', '/api/upload');
+            xhr.send(formData);
+        });
+    }
+
+    // Fetch video metadata separately for better performance
+    async fetchVideoMetadata() {
+        if (!this.uploadResponse || !this.uploadResponse.filename) {
+            throw new Error('No filename available for metadata extraction');
+        }
+        
+        try {
+            const response = await fetch(`/api/metadata/${encodeURIComponent(this.uploadResponse.filename)}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch metadata');
+            }
+            
+            const result = await response.json();
+            this.currentMetadata = result.data;
+            
+            // Refresh the player now that we have full metadata
+            this.refreshPlayerWithMetadata();
+            
+        } catch (error) {
+            console.error('Metadata fetch error:', error);
+            // Use basic metadata from upload response as fallback
+            this.currentMetadata = {
+                filename: this.uploadResponse.filename,
+                size: this.uploadResponse.size,
+                uploaded: true,
+                duration: 0, // Will need to be determined later
+                format: 'Unknown'
+            };
+            
+            // Show error state with fallback info
+            this.showFallbackWithError('Failed to extract video metadata. You can still try to cut the video.');
+        }
+    }
+
+    // Show fallback with error message
+    showFallbackWithError(message) {
+        const videoContainer = this.videoPlayer ? this.videoPlayer.parentElement : document.querySelector('.video-container');
+        if (!videoContainer) {
+            console.error('Video container not found');
+            this.showError(message);
+            return;
+        }
+        
+        videoContainer.innerHTML = `
+            <div class="video-fallback error">
+                <div class="fallback-icon">⚠️</div>
+                <h3>Metadata Error</h3>
+                <p>${message}</p>
+                <div class="fallback-info">
+                    <p><strong>File:</strong> ${this.uploadResponse ? this.uploadResponse.filename : 'Unknown'}</p>
+                    <p><strong>Size:</strong> ${this.uploadResponse ? this.formatFileSize(this.uploadResponse.size) : 'Unknown'}</p>
+                </div>
+                <p>You can still try to cut the video even without complete metadata.</p>
+            </div>
+        `;
+        
+        // Try to initialize timeline with basic info if we have upload response
+        if (this.uploadResponse && this.currentMetadata) {
+            this.currentMetadata.duration = 3600000000000; // Default 1 hour in nanoseconds
+            this.initializeTimeline();
+        }
+    }
+
+    // Refresh player after metadata is loaded
+    refreshPlayerWithMetadata() {
+        if (!this.currentMetadata || !this.currentMetadata.filename) {
+            return;
+        }
+        
+        // Reset video container to original structure
+        const videoContainer = this.videoPlayer.parentElement;
+        videoContainer.innerHTML = `
+            <video id="video-player" controls preload="metadata" style="width: 100%; border-radius: 8px;">
+                <p>Your browser does not support video playback.</p>
+            </video>
+            <div class="video-info-overlay">
+                <span id="current-time-display">00:00:00</span>
+            </div>
+        `;
+        
+        // Re-initialize player elements
+        this.videoPlayer = document.getElementById('video-player');
+        this.currentTimeDisplay = document.getElementById('current-time-display');
+        
+        // Re-bind video events
+        this.videoPlayer.addEventListener('loadedmetadata', this.initializeTimeline.bind(this));
+        this.videoPlayer.addEventListener('timeupdate', this.updateVideoProgress.bind(this));
+        
+        // Check for AV1 codec compatibility
+        const isAV1 = this.currentMetadata.video_codec === 'av1';
+        
+        if (isAV1 && !this.checkAV1Support()) {
+            // Show fallback for AV1 videos
+            this.showAV1Fallback();
+        } else {
+            // Load video
+            const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
+            this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+            console.log('Loading video:', this.videoPlayer.src);
+            
+            // Add error handler for video loading
+            this.videoPlayer.addEventListener('error', (e) => {
+                console.error('Video loading error:', e);
+                this.showVideoError('Video preview not supported by your browser.');
+            });
+            
+            this.videoPlayer.addEventListener('loadedmetadata', () => {
+                console.log('Video loaded successfully');
+            });
+        }
+        
+        // Update video info display
+        this.displayVideoMetadata();
+    }
+
     // Load video in player
     loadVideoPlayer() {
+        // Show player section first
+        this.showSection('player-section');
+        
+        // Check if we have full metadata
+        if (!this.currentMetadata || !this.currentMetadata.duration) {
+            // Show loading state while metadata loads
+            this.showMetadataLoading();
+            return;
+        }
+        
         if (this.currentMetadata && this.currentMetadata.filename) {
             // Check for AV1 codec compatibility
             const isAV1 = this.currentMetadata.video_codec === 'av1';
@@ -200,7 +377,40 @@ class VideoCutterApp {
         }
         
         this.displayVideoMetadata();
-        this.showSection('player-section');
+    }
+
+    // Show loading state for metadata
+    showMetadataLoading() {
+        const videoContainer = this.videoPlayer.parentElement;
+        videoContainer.innerHTML = `
+            <div class="video-fallback">
+                <div class="spinner"></div>
+                <h3>Processing Video...</h3>
+                <p>Extracting video metadata and preparing preview...</p>
+                <p class="fallback-note">This may take a moment for large videos.</p>
+            </div>
+        `;
+        
+        // Show basic file info
+        if (this.uploadResponse) {
+            this.videoInfo.innerHTML = `
+                <h3>Video Information</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Filename:</span>
+                        <span class="info-value">${this.uploadResponse.filename}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Size:</span>
+                        <span class="info-value">${this.formatFileSize(this.uploadResponse.size)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value">Loading metadata...</span>
+                    </div>
+                </div>
+            `;
+        }
     }
 
     // Display video metadata
@@ -517,7 +727,12 @@ class VideoCutterApp {
 
     // Show video error message
     showVideoError(message) {
-        const videoContainer = this.videoPlayer.parentElement;
+        const videoContainer = this.videoPlayer ? this.videoPlayer.parentElement : document.querySelector('.video-container');
+        if (!videoContainer) {
+            console.error('Video container not found');
+            this.showError(message);
+            return;
+        }
         videoContainer.innerHTML = `
             <div class="video-fallback error">
                 <div class="fallback-icon">⚠️</div>

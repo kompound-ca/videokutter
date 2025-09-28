@@ -22,10 +22,13 @@ FROM alpine:3.19
 # Install runtime dependencies and create user in single layer
 RUN apk add --no-cache ffmpeg ca-certificates wget && \
     adduser -D appuser && \
-    mkdir -p /app/temp
+    mkdir -p /app/temp && \
+    chown -R appuser:appuser /app
 WORKDIR /app
 COPY --from=builder --chown=appuser:appuser /app/videocutter .
 COPY --from=builder --chown=appuser:appuser /app/static ./static
+# Ensure temp directory has correct permissions
+RUN chmod 755 /app/temp && chown -R appuser:appuser /app/temp
 USER appuser
 
 # Environment and runtime config

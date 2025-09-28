@@ -19,15 +19,15 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
-    # Resource limits to prevent container from consuming too much memory
+    # Optimized resource limits for small VMs
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '2.0'
+          memory: 1G     # Reduced for small VMs
+          cpus: '1.0'    # Single CPU core
         reservations:
-          memory: 1G
-          cpus: '1.0'
+          memory: 512M   # Smaller reservation
+          cpus: '0.5'    # Half CPU reserved
 
 volumes:
   videocutter_temp:

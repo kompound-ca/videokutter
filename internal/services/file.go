@@ -30,9 +30,9 @@ func NewFileService() *FileService {
 	}
 }
 
-// SaveUploadedFile saves an uploaded file to the temp directory
+// SaveUploadedFile saves an uploaded file to the temp directory using streaming
 func (fs *FileService) SaveUploadedFile(src io.Reader, filename string) (string, error) {
-	// Clean up previous files before saving new one
+	// Clean up older files BEFORE saving new one to avoid deleting the fresh upload
 	if err := fs.CleanupPreviousFiles(); err != nil {
 		// Log warning but don't fail the upload
 		fmt.Printf("Warning: failed to cleanup previous files: %v\n", err)
@@ -51,8 +51,8 @@ func (fs *FileService) SaveUploadedFile(src io.Reader, filename string) (string,
 	}
 	defer dst.Close()
 
-	// Copy with size limit
-	limitedReader := io.LimitReader(src, fs.maxFileSize+1) // +1 to detect oversized files
+	// Use standard io.Copy with size limit for reliability
+	limitedReader := io.LimitReader(src, fs.maxFileSize+1)
 	written, err := io.Copy(dst, limitedReader)
 	if err != nil {
 		os.Remove(filepath) // Clean up on error

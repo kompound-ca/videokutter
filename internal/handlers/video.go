@@ -70,19 +70,20 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get video metadata
-	metadata, err := vh.videoService.GetVideoMetadata(savedPath)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
-			Success: false,
-			Message: fmt.Sprintf("Failed to extract video metadata: %v", err),
-		})
-	}
+	// Extract filename from saved path for immediate response
+	filename := filepath.Base(savedPath)
 
+	// Return success immediately with basic info
+	// Metadata extraction will happen when requested via /api/metadata/:filename
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Video uploaded successfully",
-		Data:    metadata,
+		Data: map[string]interface{}{
+			"filename": filename,
+			"size":     file.Size,
+			"uploaded": true,
+			"note":     "Metadata will be extracted on first request",
+		},
 	})
 }
 
@@ -95,6 +96,13 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 			Message: "Filename parameter required",
 		})
 	}
+
+	// URL decode the filename
+	decodedFilename, err := url.QueryUnescape(filename)
+	if err != nil {
+		decodedFilename = filename // fallback to original if decoding fails
+	}
+	filename = decodedFilename
 
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
