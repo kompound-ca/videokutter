@@ -8,19 +8,22 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/kompound-ca/videocutter/internal/models"
 	"github.com/kompound-ca/videocutter/internal/services"
 )
 
 type VideoHandler struct {
-	videoService *services.VideoService
-	fileService  *services.FileService
+	videoService   *services.VideoService
+	fileService    *services.FileService
+	cleanupService *services.CleanupService
 }
 
-func NewVideoHandler(videoService *services.VideoService, fileService *services.FileService) *VideoHandler {
+func NewVideoHandler(videoService *services.VideoService, fileService *services.FileService, cleanupService *services.CleanupService) *VideoHandler {
 	return &VideoHandler{
-		videoService: videoService,
-		fileService:  fileService,
+		videoService:   videoService,
+		fileService:    fileService,
+		cleanupService: cleanupService,
 	}
 }
 
@@ -73,15 +76,20 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 	// Extract filename from saved path
 	filename := filepath.Base(savedPath)
 
+	// Create cleanup session for file management
+	sessionID := uuid.New().String()
+	vh.cleanupService.CreateSession(sessionID, filename)
+
 	// Return success immediately with basic info
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Video uploaded successfully",
 		Data: map[string]interface{}{
-			"filename": filename,
-			"size":     file.Size,
-			"uploaded": true,
-			"note":     "Preview will be automatically downscaled to 720p",
+			"session_id": sessionID,
+			"filename":   filename,
+			"size":       file.Size,
+			"uploaded":   true,
+			"note":       "Preview will be automatically downscaled to 720p",
 		},
 	})
 }
@@ -94,6 +102,12 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 			Success: false,
 			Message: "Filename parameter required",
 		})
+	}
+
+	// Update session access time if session_id provided
+	sessionID := c.Query("session_id")
+	if sessionID != "" {
+		vh.cleanupService.UpdateSessionAccess(sessionID)
 	}
 
 	// URL decode the filename
@@ -174,6 +188,12 @@ func (vh *VideoHandler) Cut(c *fiber.Ctx) error {
 		})
 	}
 
+	// Update cleanup session with processed file
+	sessionID := c.Query("session_id")
+	if sessionID != "" {
+		vh.cleanupService.SetProcessedFile(sessionID, outputFilename)
+	}
+
 	// Return success response
 	cutResponse := models.CutResponse{
 		OutputFilename: outputFilename,
@@ -232,6 +252,12 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
+	// Record download activity if session_id provided
+	sessionID := c.Query("session_id")
+	if sessionID != "" {
+		vh.cleanupService.RecordDownload(sessionID)
+	}
+
 	return c.SendFile(filePath)
 }
 
@@ -287,6 +313,19 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Accept-Ranges", "bytes") // Enable seeking
 	c.Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+	c.Set("X-Content-Type-Options", "nosniff")
+	c.Set("Connection", "keep-alive")
+	
+	// Add headers to improve streaming performance
+	if contentType == "video/mp4" {
+		c.Set("Content-Disposition", "inline") // Encourage inline playback
+	}
+
+	// Update session access time if session_id provided
+	sessionID := c.Query("session_id")
+	if sessionID != "" {
+		vh.cleanupService.UpdateSessionAccess(sessionID)
+	}
 
 	fmt.Printf("Serving original video for preview: %s\n", filename)
 	return c.SendFile(filePath)
@@ -539,13 +578,18 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 
 	filename := filepath.Base(finalPath)
 
+	// Create cleanup session for chunked upload
+	sessionID := uuid.New().String()
+	vh.cleanupService.CreateSession(sessionID, filename)
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Upload completed successfully",
 		Data: map[string]interface{}{
-			"filename": filename,
-			"size":     session.TotalSize,
-			"uploaded": true,
+			"session_id": sessionID,
+			"filename":   filename,
+			"size":       session.TotalSize,
+			"uploaded":   true,
 		},
 	})
 }

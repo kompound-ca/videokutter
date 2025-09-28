@@ -498,6 +498,101 @@ header p {
     margin: 0 10px;
 }
 
+/* Session Timer */
+.session-timer {
+    background: linear-gradient(135deg, #fef5e7, #fed7aa);
+    border: 1px solid #f6ad55;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 25px 0;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 4px 12px rgba(246, 173, 85, 0.1);
+}
+
+.timer-icon {
+    font-size: 2.5rem;
+    flex-shrink: 0;
+}
+
+.timer-content {
+    flex: 1;
+    text-align: left;
+}
+
+.timer-message {
+    font-size: 1rem;
+    color: #744210;
+    margin: 0 0 8px 0;
+    font-weight: 500;
+}
+
+.countdown-display {
+    margin: 10px 0;
+}
+
+#countdown-time {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: #c53030;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 2px 4px rgba(197, 48, 48, 0.1);
+    display: inline-block;
+    min-width: 80px;
+    text-align: center;
+}
+
+#countdown-time.warning {
+    color: #d69e2e;
+    animation: pulse 1s infinite;
+}
+
+#countdown-time.critical {
+    color: #e53e3e;
+    animation: blink 0.5s infinite;
+}
+
+.timer-warning {
+    font-size: 0.85rem;
+    color: #975a16;
+    margin: 8px 0 0 0;
+    font-style: italic;
+}
+
+@keyframes pulse {
+    0%, 50%, 100% { opacity: 1; }
+    25%, 75% { opacity: 0.7; }
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    25%, 75% { opacity: 0.3; }
+}
+
+@keyframes loading-dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}
+
+.loading-dots {
+    animation: loading-dots 1.5s infinite;
+}
+
+.session-timer.expired {
+    background: linear-gradient(135deg, #fed7d7, #feb2b2);
+    border-color: #f56565;
+}
+
+.session-timer.expired .timer-message {
+    color: #742a2a;
+}
+
+.session-timer.expired .timer-warning {
+    color: #9b2c2c;
+}
+
 /* Error Card */
 .error-card {
     border-left: 4px solid #f56565;
@@ -541,6 +636,20 @@ footer {
     .download-content .btn {
         display: block;
         margin: 10px 0;
+    }
+    
+    .session-timer {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+    }
+    
+    .timer-content {
+        text-align: center;
+    }
+    
+    #countdown-time {
+        font-size: 1.8rem;
     }
 }
 

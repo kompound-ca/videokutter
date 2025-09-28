@@ -8,6 +8,9 @@ class VideoCutterApp {
         this.startTime = 0;
         this.endTime = 0;
         this.outputFilename = null;
+        this.sessionID = null;
+        this.countdownTimer = null;
+        this.keepAliveInterval = null;
         
         this.initializeElements();
         this.bindEvents();
@@ -49,6 +52,10 @@ class VideoCutterApp {
         // Download elements
         this.downloadButton = document.getElementById('download-button');
         this.newVideoButton = document.getElementById('new-video-button');
+        
+        // Timer elements
+        this.sessionTimer = document.getElementById('session-timer');
+        this.countdownTime = document.getElementById('countdown-time');
 
         // Error elements
         this.errorMessage = document.getElementById('error-message');
@@ -184,15 +191,21 @@ class VideoCutterApp {
             
             // Store upload response data
             this.uploadResponse = completeResult.data;
+            this.sessionID = completeResult.data.session_id;
             
             this.progressFill.style.width = '100%';
-            this.progressText.textContent = 'Upload complete! Loading metadata...';
+            this.progressText.textContent = 'Upload complete! Loading preview...';
             
-            // Fetch metadata after upload
-            await this.fetchVideoMetadata();
+            // Show player section immediately for better UX
+            this.showSection('player-section');
             
-            // Load video in player
-            this.loadVideoPlayer();
+            // Load video player first (fast)
+            this.loadVideoPlayerImmediate();
+            
+            // Fetch metadata in background after a short delay (slow)
+            setTimeout(() => {
+                this.fetchVideoMetadata(); // Don't await - run in parallel
+            }, 100); // Small delay to let video start loading first
             
         } catch (error) {
             this.progressContainer.style.display = 'none';
@@ -308,8 +321,22 @@ class VideoCutterApp {
             const result = await response.json();
             this.currentMetadata = result.data;
             
-            // Refresh the player now that we have full metadata
-            this.refreshPlayerWithMetadata();
+            console.log('Full metadata loaded:', this.currentMetadata);
+            
+            // Update display with complete metadata
+            this.displayVideoMetadata();
+            
+            // Update timeline if duration differs from browser metadata
+            if (this.currentMetadata.duration) {
+                const serverDuration = this.currentMetadata.duration / 1000000000; // Convert from nanoseconds
+                if (Math.abs(this.timelineDuration - serverDuration) > 1) {
+                    console.log('Updating timeline with server duration:', serverDuration);
+                    this.timelineDuration = serverDuration;
+                    this.endTime = serverDuration;
+                    this.updateTimelineMarkers();
+                    this.updateTimeDisplay();
+                }
+            }
             
         } catch (error) {
             console.error('Metadata fetch error:', error);
@@ -408,7 +435,89 @@ class VideoCutterApp {
         this.displayVideoMetadata();
     }
 
-    // Load video in player
+    // Load video player immediately after upload (fast)
+    loadVideoPlayerImmediate() {
+        if (!this.uploadResponse || !this.uploadResponse.filename) {
+            console.error('No filename available for immediate loading');
+            return;
+        }
+        
+        // Load video preview immediately using upload response data
+        const encodedFilename = encodeURIComponent(this.uploadResponse.filename);
+        this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+        this.videoPlayer.preload = 'metadata'; // Start loading metadata immediately
+        console.log('Loading video preview immediately:', this.videoPlayer.src);
+        
+        // Add error handler for video loading
+        this.videoPlayer.addEventListener('error', (e) => {
+            console.error('Video loading error:', e);
+            this.showSimpleError('Video format may not be supported by your browser.');
+        });
+        
+        this.videoPlayer.addEventListener('loadedmetadata', () => {
+            console.log('Video preview loaded successfully');
+            
+            // Hide progress container since video is loading
+            this.progressContainer.style.display = 'none';
+            
+            // Try to initialize timeline with browser metadata
+            this.initializeTimelineFromVideo();
+        });
+        
+        // Show basic upload info immediately
+        this.displayUploadInfo();
+    }
+    
+    // Display basic upload info while metadata loads
+    displayUploadInfo() {
+        if (!this.uploadResponse) return;
+        
+        const size = this.formatFileSize(this.uploadResponse.size);
+        
+        this.videoInfo.innerHTML = `
+            <h3>Video Information</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Filename:</span>
+                    <span class="info-value">${this.uploadResponse.filename}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Size:</span>
+                    <span class="info-value">${size}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value">Loading metadata... <span class="loading-dots">...</span></span>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Initialize timeline using browser video metadata (fast)
+    initializeTimelineFromVideo() {
+        if (!this.videoPlayer || !this.videoPlayer.duration) {
+            console.log('Video duration not available yet, waiting for full metadata');
+            return;
+        }
+        
+        console.log('Initializing timeline from video metadata');
+        
+        // Use browser's metadata for immediate timeline setup
+        this.timelineDuration = this.videoPlayer.duration;
+        this.startTime = 0;
+        this.endTime = this.timelineDuration;
+        
+        // Enable cut button early
+        this.cutButton.disabled = false;
+        
+        // Initialize timeline UI
+        this.updateTimelineMarkers();
+        this.updateTimeDisplay();
+        
+        console.log('Timeline initialized with duration:', this.timelineDuration);
+    }
+    
+    // Load video in player (legacy method - kept for compatibility)
     loadVideoPlayer() {
         // Show player section first
         this.showSection('player-section');
@@ -667,7 +776,7 @@ class VideoCutterApp {
             
             console.log('Sending cut request:', requestBody);
             
-            const response = await fetch('/api/cut', {
+            const response = await fetch(`/api/cut?session_id=${this.sessionID || ''}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -689,6 +798,7 @@ class VideoCutterApp {
             if (result.success && result.data) {
                 this.outputFilename = result.data.output_filename;
                 this.showSection('download-section');
+                this.startCountdownTimer();
             } else {
                 throw new Error(result.message || 'Cut operation failed');
             }
@@ -702,7 +812,8 @@ class VideoCutterApp {
     // Download video
     downloadVideo() {
         if (this.outputFilename) {
-            window.open(`/api/download/${this.outputFilename}`, '_blank');
+            const downloadUrl = `/api/download/${this.outputFilename}?session_id=${this.sessionID || ''}`;
+            window.open(downloadUrl, '_blank');
         }
     }
 
@@ -719,22 +830,6 @@ class VideoCutterApp {
         this.showSection('error-section');
     }
 
-    resetApp() {
-        // Reset all state
-        this.currentMetadata = null;
-        this.outputFilename = null;
-        this.startTime = 0;
-        this.endTime = 0;
-        this.timelineDuration = 0;
-        
-        // Reset UI elements
-        this.videoInput.value = '';
-        this.progressContainer.style.display = 'none';
-        this.cutButton.disabled = true;
-        
-        // Show upload section
-        this.showSection('upload-section');
-    }
 
     formatDuration(seconds) {
         const hours = Math.floor(seconds / 3600);
@@ -783,6 +878,168 @@ class VideoCutterApp {
         
         // Initialize timeline even without video preview
         this.initializeTimeline();
+    }
+    
+    // Session Timer Methods
+    async startCountdownTimer() {
+        if (!this.sessionID) {
+            console.warn('No session ID available for countdown timer');
+            return;
+        }
+        
+        // Clear any existing timers
+        this.stopCountdownTimer();
+        
+        // Start keep-alive interval (every 2 minutes)
+        this.keepAliveInterval = setInterval(() => {
+            this.sendKeepAlive();
+        }, 2 * 60 * 1000);
+        
+        // Start countdown update interval
+        this.updateCountdown();
+        this.countdownTimer = setInterval(() => {
+            this.updateCountdown();
+        }, 1000);
+    }
+    
+    stopCountdownTimer() {
+        if (this.countdownTimer) {
+            clearInterval(this.countdownTimer);
+            this.countdownTimer = null;
+        }
+        if (this.keepAliveInterval) {
+            clearInterval(this.keepAliveInterval);
+            this.keepAliveInterval = null;
+        }
+    }
+    
+    async updateCountdown() {
+        if (!this.sessionID || !this.countdownTime) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                const remainingSeconds = result.data.remaining_seconds;
+                
+                if (remainingSeconds <= 0) {
+                    this.onSessionExpired();
+                    return;
+                }
+                
+                // Update countdown display
+                this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
+                
+                // Update timer styling based on remaining time
+                this.updateTimerStyling(remainingSeconds);
+                
+            } else {
+                console.warn('Failed to get session time remaining:', result.error);
+            }
+        } catch (error) {
+            console.error('Error updating countdown:', error);
+        }
+    }
+    
+    async sendKeepAlive() {
+        if (!this.sessionID) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/cleanup/keepalive/${this.sessionID}`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (!result.success) {
+                console.warn('Keep-alive failed:', result.error);
+            }
+        } catch (error) {
+            console.error('Error sending keep-alive:', error);
+        }
+    }
+    
+    formatCountdown(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    updateTimerStyling(remainingSeconds) {
+        const countdownElement = this.countdownTime;
+        const timerElement = this.sessionTimer;
+        
+        // Remove existing classes
+        countdownElement.classList.remove('warning', 'critical');
+        timerElement.classList.remove('expired');
+        
+        if (remainingSeconds <= 30) {
+            // Critical - under 30 seconds
+            countdownElement.classList.add('critical');
+        } else if (remainingSeconds <= 60) {
+            // Warning - under 1 minute
+            countdownElement.classList.add('warning');
+        }
+    }
+    
+    onSessionExpired() {
+        // Stop the timer
+        this.stopCountdownTimer();
+        
+        // Update UI to show expired state
+        if (this.countdownTime) {
+            this.countdownTime.textContent = '0:00';
+        }
+        if (this.sessionTimer) {
+            this.sessionTimer.classList.add('expired');
+            const message = this.sessionTimer.querySelector('.timer-message');
+            if (message) {
+                message.textContent = 'Session expired!';
+            }
+            const warning = this.sessionTimer.querySelector('.timer-warning');
+            if (warning) {
+                warning.textContent = 'The video file has been automatically deleted. Please upload a new video to continue.';
+            }
+        }
+        
+        // Disable download button
+        if (this.downloadButton) {
+            this.downloadButton.disabled = true;
+            this.downloadButton.textContent = 'File Expired';
+        }
+        
+        console.log('Session expired - file has been deleted');
+    }
+    
+    resetApp() {
+        // Stop any running timers
+        this.stopCountdownTimer();
+        
+        // Reset all state
+        this.currentMetadata = null;
+        this.outputFilename = null;
+        this.sessionID = null;
+        this.startTime = 0;
+        this.endTime = 0;
+        this.timelineDuration = 0;
+        
+        // Reset UI elements
+        this.videoInput.value = '';
+        this.progressContainer.style.display = 'none';
+        this.cutButton.disabled = true;
+        
+        // Reset download button
+        if (this.downloadButton) {
+            this.downloadButton.disabled = false;
+            this.downloadButton.textContent = 'Download Cut Video';
+        }
+        
+        // Show upload section
+        this.showSection('upload-section');
     }
 }
 

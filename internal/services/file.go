@@ -234,6 +234,14 @@ func (fs *FileService) GetUploadSession(uploadID string) (*models.UploadSession,
 	return session, nil
 }
 
+// HasUploadSession checks if an upload session exists
+func (fs *FileService) HasUploadSession(uploadID string) bool {
+	fs.sessionsMutex.RLock()
+	_, exists := fs.sessions[uploadID]
+	fs.sessionsMutex.RUnlock()
+	return exists
+}
+
 // SaveChunk saves a chunk to the session directory
 func (fs *FileService) SaveChunk(uploadID string, chunkIndex int, data io.Reader) error {
 	session, err := fs.GetUploadSession(uploadID)

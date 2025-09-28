@@ -19,6 +19,7 @@ func main() {
 	// Initialize services
 	videoService := services.NewVideoService()
 	fileService := services.NewFileService()
+	cleanupService := services.NewCleanupService(fileService)
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -44,7 +45,8 @@ func main() {
 	}))
 
 	// Initialize handlers
-	videoHandler := handlers.NewVideoHandler(videoService, fileService)
+	videoHandler := handlers.NewVideoHandler(videoService, fileService, cleanupService)
+	cleanupHandler := handlers.NewCleanupHandler(cleanupService)
 
 	// Static files
 	app.Static("/", "./static")
@@ -73,6 +75,13 @@ func main() {
 	api.Get("/preview/:filename", videoHandler.Preview)
 	api.Post("/generate-preview/:filename", videoHandler.GeneratePreview)
 	
+	// Cleanup endpoints
+	api.Post("/cleanup/session", cleanupHandler.CleanupSession)
+	api.Post("/cleanup/keepalive/:session_id", cleanupHandler.KeepAlive)
+	api.Get("/cleanup/session/:session_id", cleanupHandler.GetSessionInfo)
+	api.Get("/cleanup/session/:session_id/time-remaining", cleanupHandler.GetSessionTimeRemaining)
+	api.Get("/cleanup/stats", cleanupHandler.GetStats)
+	
 	// Health check
 	api.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
@@ -85,6 +94,7 @@ func main() {
 	go func() {
 		<-c
 		log.Println("Gracefully shutting down...")
+		cleanupService.Stop()
 		_ = app.Shutdown()
 	}()
 
