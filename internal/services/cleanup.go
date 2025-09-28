@@ -14,8 +14,9 @@ type FileSession struct {
 	ID                string    `json:"id"`
 	UploadedFile      string    `json:"uploaded_file"`
 	ProcessedFile     string    `json:"processed_file"`
-	LastAccessTime    time.Time `json:"last_access_time"`
+	LastAccessTime    time.Time `json:"last_access_time"` // Kept for API compatibility but not used for cleanup
 	CreatedAt         time.Time `json:"created_at"`
+	ProcessedAt       time.Time `json:"processed_at"` // Time when video was cut/processed
 	DownloadCount     int       `json:"download_count"`
 	IsDownloadReady   bool      `json:"is_download_ready"`
 }
@@ -25,6 +26,7 @@ type CleanupService struct {
 	tempDir         string
 	chunksDir       string
 	sessions        map[string]*FileSession
+	userSessions    map[string]string // Maps user identifier to current session ID
 	sessionsMutex   sync.RWMutex
 	cleanupInterval time.Duration
 	maxFileAge      time.Duration
@@ -38,8 +40,9 @@ func NewCleanupService(fileService *FileService) *CleanupService {
 		tempDir:         fileService.GetTempDir(),
 		chunksDir:       filepath.Join(fileService.GetTempDir(), "chunks"),
 		sessions:        make(map[string]*FileSession),
+		userSessions:    make(map[string]string),
 		cleanupInterval: 1 * time.Minute,  // Check every minute
-		maxFileAge:      5 * time.Minute,  // Delete files after 5 minutes of inactivity
+		maxFileAge:      5 * time.Minute,  // Delete files after 5 minutes (strict timing)
 		stopChan:        make(chan struct{}),
 		fileService:     fileService,
 	}
@@ -156,9 +159,31 @@ func (cs *CleanupService) cleanupAllChunks() {
 }
 
 // CreateSession creates a new file session for tracking
+// For user-based cleanup, pass userID to automatically cleanup previous sessions
 func (cs *CleanupService) CreateSession(sessionID, uploadedFile string) *FileSession {
+	return cs.CreateSessionForUser(sessionID, uploadedFile, "")
+}
+
+// CreateSessionForUser creates a new file session and optionally cleans up previous user sessions
+func (cs *CleanupService) CreateSessionForUser(sessionID, uploadedFile, userID string) *FileSession {
 	cs.sessionsMutex.Lock()
 	defer cs.sessionsMutex.Unlock()
+	
+	// If userID is provided, cleanup any previous session for this user
+	if userID != "" {
+		if previousSessionID, exists := cs.userSessions[userID]; exists {
+			if previousSession, sessionExists := cs.sessions[previousSessionID]; sessionExists {
+				log.Printf("[CLEANUP] Auto-cleaning previous session %s for user %s", previousSessionID, userID)
+				// Remove from memory first
+				delete(cs.sessions, previousSessionID)
+				
+				// Clean up files in background (don't block new upload)
+				go cs.cleanupSessionFiles(previousSession)
+			}
+		}
+		// Update user session mapping
+		cs.userSessions[userID] = sessionID
+	}
 	
 	session := &FileSession{
 		ID:             sessionID,
@@ -173,6 +198,33 @@ func (cs *CleanupService) CreateSession(sessionID, uploadedFile string) *FileSes
 	return session
 }
 
+// cleanupSessionFiles removes files associated with a session (called asynchronously)
+func (cs *CleanupService) cleanupSessionFiles(session *FileSession) {
+	var errors []error
+	
+	if session.UploadedFile != "" {
+		filePath := filepath.Join(cs.tempDir, session.UploadedFile)
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			errors = append(errors, fmt.Errorf("failed to remove uploaded file %s: %w", filePath, err))
+		} else if err == nil {
+			log.Printf("[CLEANUP] Removed uploaded file: %s", filePath)
+		}
+	}
+	
+	if session.ProcessedFile != "" {
+		filePath := filepath.Join(cs.tempDir, session.ProcessedFile)
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			errors = append(errors, fmt.Errorf("failed to remove processed file %s: %w", filePath, err))
+		} else if err == nil {
+			log.Printf("[CLEANUP] Removed processed file: %s", filePath)
+		}
+	}
+	
+	if len(errors) > 0 {
+		log.Printf("[CLEANUP] Warning: cleanup errors for session %s: %v", session.ID, errors)
+	}
+}
+
 // UpdateSessionAccess updates the last access time for a session
 func (cs *CleanupService) UpdateSessionAccess(sessionID string) {
 	cs.sessionsMutex.Lock()
@@ -183,7 +235,7 @@ func (cs *CleanupService) UpdateSessionAccess(sessionID string) {
 	}
 }
 
-// SetProcessedFile sets the processed file for a session
+// SetProcessedFile sets the processed file for a session and records the processing time
 func (cs *CleanupService) SetProcessedFile(sessionID, processedFile string) {
 	cs.sessionsMutex.Lock()
 	defer cs.sessionsMutex.Unlock()
@@ -191,7 +243,8 @@ func (cs *CleanupService) SetProcessedFile(sessionID, processedFile string) {
 	if session, exists := cs.sessions[sessionID]; exists {
 		session.ProcessedFile = processedFile
 		session.IsDownloadReady = true
-		session.LastAccessTime = time.Now()
+		session.ProcessedAt = time.Now() // Record when video was processed/cut
+		session.LastAccessTime = time.Now() // Keep for API compatibility
 	}
 }
 
@@ -226,6 +279,15 @@ func (cs *CleanupService) CleanupSession(sessionID string) error {
 	
 	// Remove from memory first
 	delete(cs.sessions, sessionID)
+	
+	// Also remove from user session mapping if it exists
+	for userID, userSessionID := range cs.userSessions {
+		if userSessionID == sessionID {
+			delete(cs.userSessions, userID)
+			break
+		}
+	}
+	
 	cs.sessionsMutex.Unlock()
 	
 	// Clean up files
@@ -267,14 +329,26 @@ func (cs *CleanupService) startCleanupRoutine() {
 	}
 }
 
-// performCleanup removes expired sessions and files
+// performCleanup removes expired sessions and files based on strict timing
 func (cs *CleanupService) performCleanup() {
 	now := time.Now()
 	var expiredSessions []string
 	
 	cs.sessionsMutex.RLock()
 	for sessionID, session := range cs.sessions {
-		if now.Sub(session.LastAccessTime) > cs.maxFileAge {
+		// Check if session has expired based on strict timing rules:
+		// 1. If video was processed, expire 5 minutes after processing time
+		// 2. If video was only uploaded, expire 5 minutes after upload time
+		isExpired := false
+		if session.IsDownloadReady && !session.ProcessedAt.IsZero() {
+			// Session has processed file - expire 5 minutes after processing
+			isExpired = now.Sub(session.ProcessedAt) > cs.maxFileAge
+		} else {
+			// Session only has uploaded file - expire 5 minutes after upload
+			isExpired = now.Sub(session.CreatedAt) > cs.maxFileAge
+		}
+		
+		if isExpired {
 			expiredSessions = append(expiredSessions, sessionID)
 		}
 	}

@@ -76,9 +76,10 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 	// Extract filename from saved path
 	filename := filepath.Base(savedPath)
 
-	// Create cleanup session for file management
+	// Create cleanup session for file management with automatic cleanup of previous sessions
 	sessionID := uuid.New().String()
-	vh.cleanupService.CreateSession(sessionID, filename)
+	userID := c.IP() // Use IP address as simple user identifier for session management
+	vh.cleanupService.CreateSessionForUser(sessionID, filename, userID)
 
 	// Return success immediately with basic info
 	return c.JSON(models.APIResponse{
@@ -104,11 +105,9 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 		})
 	}
 
-	// Update session access time if session_id provided
-	sessionID := c.Query("session_id")
-	if sessionID != "" {
-		vh.cleanupService.UpdateSessionAccess(sessionID)
-	}
+	// Note: Session access time is no longer updated to enforce strict 5-minute expiration
+	// sessionID := c.Query("session_id")
+	// Removed UpdateSessionAccess call to prevent timer extension
 
 	// URL decode the filename
 	decodedFilename, err := url.QueryUnescape(filename)
@@ -252,11 +251,9 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
-	// Record download activity if session_id provided
-	sessionID := c.Query("session_id")
-	if sessionID != "" {
-		vh.cleanupService.RecordDownload(sessionID)
-	}
+	// Note: Download activity no longer extends session to enforce strict 5-minute expiration
+	// sessionID := c.Query("session_id")
+	// Removed RecordDownload call to prevent timer extension
 
 	return c.SendFile(filePath)
 }
@@ -321,11 +318,9 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 		c.Set("Content-Disposition", "inline") // Encourage inline playback
 	}
 
-	// Update session access time if session_id provided
-	sessionID := c.Query("session_id")
-	if sessionID != "" {
-		vh.cleanupService.UpdateSessionAccess(sessionID)
-	}
+	// Note: Preview access no longer extends session to enforce strict 5-minute expiration
+	// sessionID := c.Query("session_id")
+	// Removed UpdateSessionAccess call to prevent timer extension
 
 	fmt.Printf("Serving original video for preview: %s\n", filename)
 	return c.SendFile(filePath)
@@ -578,9 +573,10 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 
 	filename := filepath.Base(finalPath)
 
-	// Create cleanup session for chunked upload
+	// Create cleanup session for chunked upload with automatic cleanup of previous sessions
 	sessionID := uuid.New().String()
-	vh.cleanupService.CreateSession(sessionID, filename)
+	userID := c.IP() // Use IP address as simple user identifier for session management
+	vh.cleanupService.CreateSessionForUser(sessionID, filename, userID)
 
 	return c.JSON(models.APIResponse{
 		Success: true,

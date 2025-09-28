@@ -81,12 +81,12 @@ func (h *CleanupHandler) KeepAlive(c *fiber.Ctx) error {
 		})
 	}
 
-	// Update last access time
-	h.cleanupService.UpdateSessionAccess(sessionID)
-
+	// Note: Keep-alive no longer extends session due to strict timing policy
+	// Sessions expire exactly 5 minutes after upload/cut regardless of activity
+	
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Session keep-alive updated",
+		"message": "Session is active",
 	})
 }
 
@@ -134,11 +134,27 @@ func (h *CleanupHandler) GetSessionTimeRemaining(c *fiber.Ctx) error {
 		})
 	}
 
-	// Calculate remaining time (5 minutes from last access)
+	// Calculate remaining time based on strict timing rules:
+	// - If processed: 5 minutes from processing time
+	// - If only uploaded: 5 minutes from creation time
 	maxFileAge := 5 * 60 // 5 minutes in seconds
-	elapsedSeconds := int(time.Since(session.LastAccessTime).Seconds())
-	remainingSeconds := maxFileAge - elapsedSeconds
+	var elapsedSeconds int
+	var referenceTime time.Time
+	var phase string
 	
+	if session.IsDownloadReady && !session.ProcessedAt.IsZero() {
+		// Session has processed file - calculate from processing time
+		referenceTime = session.ProcessedAt
+		phase = "download"
+		elapsedSeconds = int(time.Since(session.ProcessedAt).Seconds())
+	} else {
+		// Session only has uploaded file - calculate from creation time
+		referenceTime = session.CreatedAt
+		phase = "cut"
+		elapsedSeconds = int(time.Since(session.CreatedAt).Seconds())
+	}
+	
+	remainingSeconds := maxFileAge - elapsedSeconds
 	if remainingSeconds < 0 {
 		remainingSeconds = 0
 	}
@@ -148,8 +164,11 @@ func (h *CleanupHandler) GetSessionTimeRemaining(c *fiber.Ctx) error {
 		"data": fiber.Map{
 			"remaining_seconds": remainingSeconds,
 			"remaining_minutes": remainingSeconds / 60,
-			"last_access_time":  session.LastAccessTime,
+			"reference_time":    referenceTime,
+			"phase":             phase, // "cut" or "download"
 			"is_expired":        remainingSeconds <= 0,
+			"created_at":        session.CreatedAt,
+			"processed_at":      session.ProcessedAt,
 		},
 	})
 }
