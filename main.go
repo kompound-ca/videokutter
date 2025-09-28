@@ -56,12 +56,24 @@ func main() {
 
 	// API routes
 	api := app.Group("/api")
+	
+	// Legacy single upload (kept for compatibility)
 	api.Post("/upload", videoHandler.Upload)
+	
+	// Chunked upload endpoints
+	api.Post("/upload/init", videoHandler.InitUpload)
+	api.Post("/upload/chunk", videoHandler.UploadChunk)
+	api.Get("/upload/status/:upload_id", videoHandler.GetUploadStatus)
+	api.Post("/upload/complete", videoHandler.CompleteUpload)
+	
+	// Video processing endpoints
 	api.Get("/metadata/:filename", videoHandler.GetMetadata)
 	api.Post("/cut", videoHandler.Cut)
 	api.Get("/download/:filename", videoHandler.Download)
 	api.Get("/preview/:filename", videoHandler.Preview)
 	api.Post("/generate-preview/:filename", videoHandler.GeneratePreview)
+	
+	// Health check
 	api.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})

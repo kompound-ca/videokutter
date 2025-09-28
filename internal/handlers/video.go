@@ -70,11 +70,10 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 
-	// Extract filename from saved path for immediate response
+	// Extract filename from saved path
 	filename := filepath.Base(savedPath)
 
 	// Return success immediately with basic info
-	// Metadata extraction will happen when requested via /api/metadata/:filename
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Video uploaded successfully",
@@ -82,7 +81,7 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 			"filename": filename,
 			"size":     file.Size,
 			"uploaded": true,
-			"note":     "Metadata will be extracted on first request",
+			"note":     "Preview will be automatically downscaled to 720p",
 		},
 	})
 }
@@ -256,6 +255,7 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	fmt.Printf("Preview request for filename: %s (decoded: %s)\n", filename, decodedFilename)
 	filename = decodedFilename
 
+	// Serve original video with optimization headers for browser
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
@@ -286,8 +286,9 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", contentType)
 	c.Set("Accept-Ranges", "bytes") // Enable seeking
-	c.Set("Cache-Control", "no-cache")
+	c.Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
+	fmt.Printf("Serving original video for preview: %s\n", filename)
 	return c.SendFile(filePath)
 }
 
@@ -333,6 +334,218 @@ func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
 		Message: "Preview generated successfully",
 		Data: map[string]string{
 			"preview_filename": previewFilename,
+		},
+	})
+}
+
+// Chunked Upload Handlers
+
+// InitUpload initializes a chunked upload session
+func (vh *VideoHandler) InitUpload(c *fiber.Ctx) error {
+	var req models.InitUploadRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Invalid request body",
+		})
+	}
+
+	// Validate file format
+	if !vh.videoService.ValidateVideoFormat(req.Filename) {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Unsupported video format. Supported formats: MP4, AVI, MOV, MKV, WebM, M4V",
+		})
+	}
+
+	// Validate file size
+	if err := vh.fileService.ValidateFileSize(req.FileSize); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	// Initialize upload session
+	session, err := vh.fileService.InitializeUpload(req.Filename, req.FileSize, req.ChunkSize)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to initialize upload: %v", err),
+		})
+	}
+
+	response := models.InitUploadResponse{
+		UploadID:    session.ID,
+		ChunkSize:   session.ChunkSize,
+		TotalChunks: session.TotalChunks,
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Upload session initialized",
+		Data:    response,
+	})
+}
+
+// UploadChunk handles individual chunk uploads
+func (vh *VideoHandler) UploadChunk(c *fiber.Ctx) error {
+	uploadID := c.FormValue("upload_id")
+	chunkIndexStr := c.FormValue("chunk_index")
+
+	if uploadID == "" || chunkIndexStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Missing upload_id or chunk_index",
+		})
+	}
+
+	chunkIndex, err := strconv.Atoi(chunkIndexStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Invalid chunk_index",
+		})
+	}
+
+	// Check if chunk is already uploaded (resume capability)
+	if vh.fileService.IsChunkUploaded(uploadID, chunkIndex) {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "Chunk already uploaded",
+			Data: models.ChunkUploadResponse{
+				UploadID:   uploadID,
+				ChunkIndex: chunkIndex,
+				Uploaded:   true,
+			},
+		})
+	}
+
+	// Get chunk file from form
+	file, err := c.FormFile("chunk")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "No chunk file provided",
+		})
+	}
+
+	// Open chunk file
+	src, err := file.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: "Failed to process chunk file",
+		})
+	}
+	defer src.Close()
+
+	// Save chunk
+	err = vh.fileService.SaveChunk(uploadID, chunkIndex, src)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to save chunk: %v", err),
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Chunk uploaded successfully",
+		Data: models.ChunkUploadResponse{
+			UploadID:   uploadID,
+			ChunkIndex: chunkIndex,
+			Uploaded:   true,
+		},
+	})
+}
+
+// GetUploadStatus returns the current upload status
+func (vh *VideoHandler) GetUploadStatus(c *fiber.Ctx) error {
+	uploadID := c.Params("upload_id")
+	if uploadID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Upload ID required",
+		})
+	}
+
+	session, err := vh.fileService.GetUploadSession(uploadID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: "Upload session not found",
+		})
+	}
+
+	missingChunks, _ := vh.fileService.GetMissingChunks(uploadID)
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Upload status retrieved",
+		Data: map[string]interface{}{
+			"upload_id":       session.ID,
+			"total_chunks":    session.TotalChunks,
+			"uploaded_chunks": len(session.UploadedChunks),
+			"missing_chunks":  missingChunks,
+			"complete":        len(missingChunks) == 0,
+		},
+	})
+}
+
+// CompleteUpload finalizes the chunked upload
+func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
+	var req models.CompleteUploadRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Invalid request body",
+		})
+	}
+
+	// Check if all chunks are uploaded
+	missingChunks, err := vh.fileService.GetMissingChunks(req.UploadID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: "Upload session not found",
+		})
+	}
+
+	if len(missingChunks) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Missing chunks: %v", missingChunks),
+		})
+	}
+
+	// Get session info before cleanup (AssembleChunks will clean up the session)
+	session, err := vh.fileService.GetUploadSession(req.UploadID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: "Upload session not found",
+		})
+	}
+
+	// Assemble chunks into final file
+	finalPath, err := vh.fileService.AssembleChunks(req.UploadID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to assemble file: %v", err),
+		})
+	}
+
+	filename := filepath.Base(finalPath)
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Upload completed successfully",
+		Data: map[string]interface{}{
+			"filename": filename,
+			"size":     session.TotalSize,
+			"uploaded": true,
 		},
 	})
 }

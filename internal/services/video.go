@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/kompound-ca/videocutter/internal/models"
 )
 
@@ -168,22 +169,22 @@ func (vs *VideoService) GetTempDir() string {
 	return vs.tempDir
 }
 
-// GeneratePreview creates a browser-compatible preview using lightweight encoding
+// GeneratePreview creates a browser-compatible 720p preview using lightweight encoding
 func (vs *VideoService) GeneratePreview(inputPath string, originalFilename string) (string, error) {
 	// Generate safe preview filename
 	previewFilename := vs.generateSafePreviewFilename()
 	previewPath := filepath.Join(vs.tempDir, previewFilename)
 
-	// Use FFmpeg to create a lightweight H.264 preview
-	// This uses fast encoding settings to minimize processing time
+	// Use FFmpeg to create a lightweight H.264 preview downscaled to 720p
+	// This reduces file size significantly and improves browser performance
 	cmd := exec.Command("ffmpeg",
 		"-i", inputPath,
 		"-c:v", "libx264", // H.264 codec (widely supported)
-		"-preset", "ultrafast", // Fastest encoding preset
-		"-crf", "28", // Reasonable quality vs size balance
-		"-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Ensure even dimensions
+		"-preset", "veryfast", // Fast encoding preset (better quality than ultrafast)
+		"-crf", "26", // Good quality vs size balance for preview
+		"-vf", "scale=-2:720", // Downscale to 720p height, maintain aspect ratio
 		"-c:a", "aac", // AAC audio (widely supported)
-		"-b:a", "128k", // Reasonable audio bitrate
+		"-b:a", "96k", // Lower audio bitrate for preview
 		"-movflags", "+faststart", // Enable web streaming
 		"-f", "mp4", // MP4 container
 		"-y", // Overwrite output file if exists
@@ -220,4 +221,47 @@ func formatDuration(d time.Duration) string {
 	milliseconds := int(d.Nanoseconds()/1000000) % 1000
 	
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds)
+}
+
+// StreamPreview720p streams a 720p version of the video on-the-fly
+func (vs *VideoService) StreamPreview720p(c *fiber.Ctx, inputPath string) error {
+	// Generate unique temp filename for this 720p stream
+	previewFilename := vs.generateSafePreviewFilename()
+	previewPath := filepath.Join(vs.tempDir, previewFilename)
+
+	// Start FFmpeg process to transcode to 720p and pipe to stdout
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-c:v", "libx264", // H.264 codec (widely supported)
+		"-preset", "ultrafast", // Fastest encoding for real-time
+		"-crf", "28", // Reasonable quality for preview
+		"-vf", "scale=-2:720", // Downscale to 720p height, maintain aspect ratio
+		"-c:a", "aac", // AAC audio (widely supported)
+		"-b:a", "96k", // Lower audio bitrate
+		"-movflags", "frag_keyframe+empty_moov", // Enable streaming
+		"-f", "mp4", // MP4 container
+		"-y", // Overwrite if exists
+		previewPath)
+
+	// Execute command and wait for it to complete
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to generate 720p preview: %v, stderr: %s", err, string(output)))
+	}
+
+	// Set headers for video streaming
+	c.Set("Content-Type", "video/mp4")
+	c.Set("Accept-Ranges", "bytes")
+	c.Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+
+	// Serve the generated 720p file
+	defer func() {
+		// Clean up temp preview file after serving
+		go func() {
+			time.Sleep(10 * time.Second) // Wait a bit for download to complete
+			os.Remove(previewPath)
+		}()
+	}()
+
+	return c.SendFile(previewPath)
 }

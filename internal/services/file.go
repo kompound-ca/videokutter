@@ -6,13 +6,22 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/kompound-ca/videocutter/internal/models"
 )
 
 type FileService struct {
 	tempDir       string
 	maxFileSize   int64
 	lastProcessed string
+	// Chunked upload fields
+	chunksDir     string
+	sessions      map[string]*models.UploadSession
+	sessionsMutex sync.RWMutex
+	defaultChunkSize int64
 }
 
 func NewFileService() *FileService {
@@ -21,12 +30,17 @@ func NewFileService() *FileService {
 		tempDir = "./temp"
 	}
 
-	// Ensure temp directory exists
+	// Setup directories
+	chunksDir := filepath.Join(tempDir, "chunks")
 	os.MkdirAll(tempDir, 0755)
+	os.MkdirAll(chunksDir, 0755)
 
 	return &FileService{
-		tempDir:     tempDir,
-		maxFileSize: 10 * 1024 * 1024 * 1024, // 10GB
+		tempDir:          tempDir,
+		maxFileSize:      10 * 1024 * 1024 * 1024, // 10GB
+		chunksDir:        chunksDir,
+		sessions:         make(map[string]*models.UploadSession),
+		defaultChunkSize: 5 * 1024 * 1024, // 5MB chunks
 	}
 }
 
@@ -164,4 +178,172 @@ func (fs *FileService) generateSafeFilename(ext string, suffix ...string) string
 	}
 	
 	return filename + ext
+}
+
+// Chunked Upload Methods
+
+// InitializeUpload creates a new upload session
+func (fs *FileService) InitializeUpload(originalName string, fileSize, chunkSize int64) (*models.UploadSession, error) {
+	if chunkSize <= 0 {
+		chunkSize = fs.defaultChunkSize
+	}
+
+	// Generate unique session ID and safe filename
+	uploadID := uuid.New().String()
+	ext := filepath.Ext(originalName)
+	safeFilename := fs.generateSafeFilename(ext)
+
+	// Calculate total chunks
+	totalChunks := int((fileSize + chunkSize - 1) / chunkSize)
+
+	// Create upload session
+	session := &models.UploadSession{
+		ID:             uploadID,
+		Filename:       safeFilename,
+		OriginalName:   originalName,
+		TotalSize:      fileSize,
+		ChunkSize:      chunkSize,
+		TotalChunks:    totalChunks,
+		UploadedChunks: make(map[int]bool),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	// Store session
+	fs.sessionsMutex.Lock()
+	fs.sessions[uploadID] = session
+	fs.sessionsMutex.Unlock()
+
+	// Create session directory
+	sessionDir := filepath.Join(fs.chunksDir, uploadID)
+	os.MkdirAll(sessionDir, 0755)
+
+	return session, nil
+}
+
+// GetUploadSession retrieves an upload session
+func (fs *FileService) GetUploadSession(uploadID string) (*models.UploadSession, error) {
+	fs.sessionsMutex.RLock()
+	session, exists := fs.sessions[uploadID]
+	fs.sessionsMutex.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("upload session not found: %s", uploadID)
+	}
+
+	return session, nil
+}
+
+// SaveChunk saves a chunk to the session directory
+func (fs *FileService) SaveChunk(uploadID string, chunkIndex int, data io.Reader) error {
+	session, err := fs.GetUploadSession(uploadID)
+	if err != nil {
+		return err
+	}
+
+	// Create chunk file
+	chunkPath := filepath.Join(fs.chunksDir, uploadID, fmt.Sprintf("chunk_%d", chunkIndex))
+	chunkFile, err := os.Create(chunkPath)
+	if err != nil {
+		return fmt.Errorf("failed to create chunk file: %w", err)
+	}
+	defer chunkFile.Close()
+
+	// Copy chunk data
+	limitedReader := io.LimitReader(data, session.ChunkSize+1024) // Small buffer for safety
+	_, err = io.Copy(chunkFile, limitedReader)
+	if err != nil {
+		return fmt.Errorf("failed to save chunk: %w", err)
+	}
+
+	// Mark chunk as uploaded
+	fs.sessionsMutex.Lock()
+	session.UploadedChunks[chunkIndex] = true
+	session.UpdatedAt = time.Now()
+	fs.sessionsMutex.Unlock()
+
+	return nil
+}
+
+// IsChunkUploaded checks if a specific chunk is already uploaded
+func (fs *FileService) IsChunkUploaded(uploadID string, chunkIndex int) bool {
+	fs.sessionsMutex.RLock()
+	session, exists := fs.sessions[uploadID]
+	fs.sessionsMutex.RUnlock()
+
+	if !exists {
+		return false
+	}
+
+	return session.UploadedChunks[chunkIndex]
+}
+
+// GetMissingChunks returns a list of missing chunk indices
+func (fs *FileService) GetMissingChunks(uploadID string) ([]int, error) {
+	session, err := fs.GetUploadSession(uploadID)
+	if err != nil {
+		return nil, err
+	}
+
+	var missing []int
+	for i := 0; i < session.TotalChunks; i++ {
+		if !session.UploadedChunks[i] {
+			missing = append(missing, i)
+		}
+	}
+
+	return missing, nil
+}
+
+// AssembleChunks combines all chunks into the final file
+func (fs *FileService) AssembleChunks(uploadID string) (string, error) {
+	session, err := fs.GetUploadSession(uploadID)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if all chunks are uploaded
+	if len(session.UploadedChunks) != session.TotalChunks {
+		return "", fmt.Errorf("not all chunks uploaded: %d/%d", len(session.UploadedChunks), session.TotalChunks)
+	}
+
+	// Create final file
+	finalPath := filepath.Join(fs.tempDir, session.Filename)
+	finalFile, err := os.Create(finalPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create final file: %w", err)
+	}
+	defer finalFile.Close()
+
+	// Assemble chunks in order
+	for i := 0; i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(fs.chunksDir, uploadID, fmt.Sprintf("chunk_%d", i))
+		chunkFile, err := os.Open(chunkPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to open chunk %d: %w", i, err)
+		}
+
+		_, err = io.Copy(finalFile, chunkFile)
+		chunkFile.Close()
+		if err != nil {
+			return "", fmt.Errorf("failed to copy chunk %d: %w", i, err)
+		}
+	}
+
+	// Cleanup session
+	fs.CleanupSession(uploadID)
+
+	return finalPath, nil
+}
+
+// CleanupSession removes the session and its chunks
+func (fs *FileService) CleanupSession(uploadID string) {
+	// Remove session directory
+	sessionDir := filepath.Join(fs.chunksDir, uploadID)
+	os.RemoveAll(sessionDir)
+
+	// Remove session from memory
+	fs.sessionsMutex.Lock()
+	delete(fs.sessions, uploadID)
+	fs.sessionsMutex.Unlock()
 }

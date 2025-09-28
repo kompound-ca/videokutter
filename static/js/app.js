@@ -137,26 +137,53 @@ class VideoCutterApp {
         this.uploadFile(file);
     }
 
-    // Upload file to server with progress tracking
+    // Upload file using chunked upload with parallel streams
     async uploadFile(file) {
-        const formData = new FormData();
-        formData.append('video', file);
-
         // Show progress
         this.progressContainer.style.display = 'block';
         this.progressFill.style.width = '0%';
-        this.progressText.textContent = 'Uploading...';
+        this.progressText.textContent = 'Initializing upload...';
 
         try {
-            // Use XMLHttpRequest for better upload progress tracking
-            const response = await this.uploadWithProgress(formData);
+            // Initialize chunked upload
+            const chunkSize = 5 * 1024 * 1024; // 5MB chunks
+            const totalChunks = Math.ceil(file.size / chunkSize);
             
-            if (!response.success) {
-                throw new Error(response.message || 'Upload failed');
+            const initResponse = await fetch('/api/upload/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: file.name,
+                    file_size: file.size,
+                    chunk_size: chunkSize
+                })
+            });
+            
+            const initResult = await initResponse.json();
+            if (!initResult.success) {
+                throw new Error(initResult.message);
             }
-
+            
+            const uploadID = initResult.data.upload_id;
+            this.currentUploadID = uploadID;
+            
+            // Start chunked upload with parallel streams
+            await this.uploadChunksParallel(file, uploadID, chunkSize, totalChunks);
+            
+            // Complete upload
+            const completeResponse = await fetch('/api/upload/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ upload_id: uploadID })
+            });
+            
+            const completeResult = await completeResponse.json();
+            if (!completeResult.success) {
+                throw new Error(completeResult.message);
+            }
+            
             // Store upload response data
-            this.uploadResponse = response.data;
+            this.uploadResponse = completeResult.data;
             
             this.progressFill.style.width = '100%';
             this.progressText.textContent = 'Upload complete! Loading metadata...';
@@ -173,54 +200,96 @@ class VideoCutterApp {
         }
     }
 
-    // Upload with XMLHttpRequest for progress tracking
-    uploadWithProgress(formData) {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            
-            // Track upload progress
-            xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    const percentComplete = Math.round((e.loaded / e.total) * 100);
-                    this.progressFill.style.width = `${percentComplete}%`;
-                    this.progressText.textContent = `Uploading... ${percentComplete}%`;
-                }
-            });
-            
-            // Handle response
-            xhr.addEventListener('load', () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        const response = JSON.parse(xhr.responseText);
-                        resolve(response);
-                    } catch (e) {
-                        reject(new Error('Invalid server response'));
+    // Upload chunks in parallel with resume capability
+    async uploadChunksParallel(file, uploadID, chunkSize, totalChunks) {
+        const maxParallelUploads = 3;
+        const uploadedChunks = new Set();
+        let uploadedCount = 0;
+        
+        // Check for existing uploads (resume capability)
+        try {
+            const statusResponse = await fetch(`/api/upload/status/${uploadID}`);
+            if (statusResponse.ok) {
+                const statusResult = await statusResponse.json();
+                if (statusResult.success) {
+                    // Mark already uploaded chunks
+                    const missingChunks = statusResult.data.missing_chunks || [];
+                    for (let i = 0; i < totalChunks; i++) {
+                        if (!missingChunks.includes(i)) {
+                            uploadedChunks.add(i);
+                            uploadedCount++;
+                        }
                     }
-                } else {
-                    try {
-                        const errorResponse = JSON.parse(xhr.responseText);
-                        reject(new Error(errorResponse.message || `Server error: ${xhr.status}`));
-                    } catch (e) {
-                        reject(new Error(`Server error: ${xhr.status}`));
-                    }
+                    console.log(`Resuming upload: ${uploadedCount}/${totalChunks} chunks already uploaded`);
                 }
+            }
+        } catch (e) {
+            console.log('No existing upload session found, starting fresh');
+        }
+        
+        const updateProgress = () => {
+            const progress = Math.round((uploadedCount / totalChunks) * 100);
+            this.progressFill.style.width = `${progress}%`;
+            this.progressText.textContent = `Uploading... ${progress}% (${uploadedCount}/${totalChunks} chunks)`;
+        };
+        
+        updateProgress();
+        
+        // Create upload queue
+        const chunksToUpload = [];
+        for (let i = 0; i < totalChunks; i++) {
+            if (!uploadedChunks.has(i)) {
+                chunksToUpload.push(i);
+            }
+        }
+        
+        // Upload chunks with parallel streams
+        const uploadPromises = [];
+        let chunkIndex = 0;
+        
+        const uploadChunk = async (index) => {
+            const start = index * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+            
+            const formData = new FormData();
+            formData.append('upload_id', uploadID);
+            formData.append('chunk_index', index.toString());
+            formData.append('chunk', chunk, `chunk_${index}`);
+            
+            const response = await fetch('/api/upload/chunk', {
+                method: 'POST',
+                body: formData
             });
             
-            xhr.addEventListener('error', () => {
-                reject(new Error('Network error occurred during upload'));
-            });
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(`Chunk ${index} failed: ${result.message}`);
+            }
             
-            xhr.addEventListener('timeout', () => {
-                reject(new Error('Upload timed out'));
-            });
+            uploadedChunks.add(index);
+            uploadedCount++;
+            updateProgress();
             
-            // Set timeout for large files (30 minutes)
-            xhr.timeout = 30 * 60 * 1000;
+            return result;
+        };
+        
+        // Process chunks with concurrency limit
+        while (chunkIndex < chunksToUpload.length) {
+            const currentBatch = [];
             
-            // Send request
-            xhr.open('POST', '/api/upload');
-            xhr.send(formData);
-        });
+            // Create batch of parallel uploads
+            for (let i = 0; i < maxParallelUploads && chunkIndex < chunksToUpload.length; i++) {
+                const currentChunkIndex = chunksToUpload[chunkIndex];
+                currentBatch.push(uploadChunk(currentChunkIndex));
+                chunkIndex++;
+            }
+            
+            // Wait for current batch to complete
+            await Promise.all(currentBatch);
+        }
+        
+        console.log(`Upload completed: ${uploadedCount}/${totalChunks} chunks uploaded`);
     }
 
     // Fetch video metadata separately for better performance
@@ -352,28 +421,20 @@ class VideoCutterApp {
         }
         
         if (this.currentMetadata && this.currentMetadata.filename) {
-            // Check for AV1 codec compatibility
-            const isAV1 = this.currentMetadata.video_codec === 'av1';
+            // Load video preview
+            const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
+            this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+            console.log('Loading video preview:', this.videoPlayer.src);
             
-            if (isAV1 && !this.checkAV1Support()) {
-                // Show fallback for AV1 videos
-                this.showAV1Fallback();
-            } else {
-                // Properly encode the filename for the URL
-                const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
-                this.videoPlayer.src = `/api/preview/${encodedFilename}`;
-                console.log('Loading video:', this.videoPlayer.src);
-                
-                // Add error handler for video loading
-                this.videoPlayer.addEventListener('error', (e) => {
-                    console.error('Video loading error:', e);
-                    this.showVideoError('Video preview not supported by your browser.');
-                });
-                
-                this.videoPlayer.addEventListener('loadedmetadata', () => {
-                    console.log('Video loaded successfully');
-                });
-            }
+            // Add error handler for video loading
+            this.videoPlayer.addEventListener('error', (e) => {
+                console.error('Video loading error:', e);
+                this.showSimpleError('Video format may not be supported by your browser.');
+            });
+            
+            this.videoPlayer.addEventListener('loadedmetadata', () => {
+                console.log('Video preview loaded successfully');
+            });
         }
         
         this.displayVideoMetadata();
@@ -703,30 +764,8 @@ class VideoCutterApp {
                video.canPlayType('video/webm; codecs="av01.0.05M.08"') !== '';
     }
 
-    // Show AV1 fallback message
-    showAV1Fallback() {
-        const videoContainer = this.videoPlayer.parentElement;
-        videoContainer.innerHTML = `
-            <div class="video-fallback">
-                <div class="fallback-icon">🎬</div>
-                <h3>AV1 Video Detected</h3>
-                <p>Your browser doesn't support AV1 video playback for preview.</p>
-                <p><strong>Don't worry!</strong> You can still cut this video using the timeline below.</p>
-                <div class="fallback-info">
-                    <p><strong>Video Duration:</strong> ${this.formatDuration(this.currentMetadata.duration / 1000000000)}</p>
-                    <p><strong>Resolution:</strong> ${this.currentMetadata.resolution}</p>
-                </div>
-                <p class="fallback-note">The video cutting will work perfectly even without preview!</p>
-                <button class="btn btn-secondary" onclick="window.videoCutterApp.generatePreview()">Generate Preview (Slower)</button>
-            </div>
-        `;
-        
-        // Initialize timeline even without video preview
-        this.initializeTimeline();
-    }
-
-    // Show video error message
-    showVideoError(message) {
+    // Simple error message for preview issues
+    showSimpleError(message) {
         const videoContainer = this.videoPlayer ? this.videoPlayer.parentElement : document.querySelector('.video-container');
         if (!videoContainer) {
             console.error('Video container not found');
@@ -734,89 +773,16 @@ class VideoCutterApp {
             return;
         }
         videoContainer.innerHTML = `
-            <div class="video-fallback error">
-                <div class="fallback-icon">⚠️</div>
-                <h3>Video Preview Error</h3>
-                <p>${message}</p>
-                <p>You can still use the timeline below to cut your video.</p>
-                <button class="btn btn-secondary" onclick="window.videoCutterApp.generatePreview()">Generate Preview (Slower)</button>
-            </div>
-        `;
-        
-        // Initialize timeline even with video error
-        this.initializeTimeline();
-    }
-
-    // Generate a browser-compatible preview
-    async generatePreview() {
-        if (!this.currentMetadata) return;
-        
-        console.log('Generating browser-compatible preview...');
-        
-        // Find video container (it may have changed due to fallback)
-        let videoContainer = document.querySelector('.video-container');
-        if (!videoContainer) {
-            console.error('Video container not found');
-            return;
-        }
-        
-        const originalContent = videoContainer.innerHTML;
-        
-        videoContainer.innerHTML = `
             <div class="video-fallback">
-                <div class="spinner"></div>
-                <h3>Generating Preview...</h3>
-                <p>Converting video to browser-compatible format...</p>
-                <p class="fallback-note">This may take a minute for large videos.</p>
+                <div class="fallback-icon">📺</div>
+                <h3>Video Preview</h3>
+                <p>${message}</p>
+                <p class="fallback-note">You can still use the timeline below to cut your video.</p>
             </div>
         `;
         
-        try {
-            const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
-            const response = await fetch(`/api/generate-preview/${encodedFilename}`, {
-                method: 'POST'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to generate preview');
-            }
-            
-            const result = await response.json();
-            
-            if (result.success && result.data.preview_filename) {
-                // Load the generated preview
-                videoContainer.innerHTML = `
-                    <video id="video-player-preview" controls preload="metadata" style="width: 100%; border-radius: 8px;">
-                        <p>Your browser does not support video playback.</p>
-                    </video>
-                    <div class="video-info-overlay">
-                        <span id="current-time-display-preview">00:00:00</span>
-                    </div>
-                `;
-                
-                const previewPlayer = document.getElementById('video-player-preview');
-                const previewTimeDisplay = document.getElementById('current-time-display-preview');
-                
-                previewPlayer.src = `/api/preview/${encodeURIComponent(result.data.preview_filename)}`;
-                
-                // Update time display for preview
-                previewPlayer.addEventListener('timeupdate', () => {
-                    if (previewTimeDisplay) {
-                        previewTimeDisplay.textContent = this.formatDuration(previewPlayer.currentTime);
-                    }
-                });
-                
-                console.log('Preview generated successfully');
-            } else {
-                throw new Error(result.message || 'Preview generation failed');
-            }
-            
-        } catch (error) {
-            console.error('Preview generation error:', error);
-            // Restore original fallback content
-            videoContainer.innerHTML = originalContent;
-            this.showError(`Preview generation failed: ${error.message}`);
-        }
+        // Initialize timeline even without video preview
+        this.initializeTimeline();
     }
 }
 

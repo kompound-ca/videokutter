@@ -23,8 +23,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G     # Reduced for small VMs
-          cpus: '1.0'    # Single CPU core
+          memory: 2G     # Reduced for small VMs
+          cpus: '2.0'    # Single CPU core
         reservations:
           memory: 512M   # Smaller reservation
           cpus: '0.5'    # Half CPU reserved
