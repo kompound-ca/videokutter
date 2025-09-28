@@ -59,8 +59,13 @@ Create a `.env` file from `.env.example` and customize:
 # Server Configuration
 PORT=8080
 
-# File Storage Configuration  
-TEMP_DIR=./temp
+# File Storage Configuration
+# HOST_UPLOAD_DIR specifies where uploaded files are stored on your host machine
+# when running with Docker. Examples:
+#   Windows: HOST_UPLOAD_DIR=C:\\Users\\your-username\\VideoUploads
+#   Linux/Mac: HOST_UPLOAD_DIR=/home/your-username/video-uploads
+#   Relative: HOST_UPLOAD_DIR=./uploads
+HOST_UPLOAD_DIR=./uploads
 
 # Optional: Logging Level
 LOG_LEVEL=info
@@ -241,7 +246,8 @@ docker compose down && docker compose pull && docker compose up -d
 ### Environment Variables for Production
 ```env
 PORT=8080
-TEMP_DIR=/app/temp
+# HOST_UPLOAD_DIR only affects Docker deployment
+HOST_UPLOAD_DIR=/var/lib/videocutter/uploads
 LOG_LEVEL=warn
 ```
 
