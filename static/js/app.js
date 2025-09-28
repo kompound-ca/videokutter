@@ -243,11 +243,16 @@ class VideoCutterApp {
 
     // Initialize timeline after video loads
     initializeTimeline() {
-        if (!this.currentMetadata) return;
+        if (!this.currentMetadata) {
+            console.error('No metadata for timeline initialization');
+            return;
+        }
         
         this.timelineDuration = this.currentMetadata.duration / 1000000000; // Convert from nanoseconds to seconds
         this.startTime = 0;
         this.endTime = this.timelineDuration;
+        
+        // Timeline initialized
         
         this.updateTimelineMarkers();
         this.updateTimeDisplay();
@@ -272,8 +277,10 @@ class VideoCutterApp {
         
         if (this.dragTarget === this.startMarker) {
             this.startTime = Math.min(time, this.endTime - 1); // Keep at least 1 second gap
+        // Start time updated
         } else if (this.dragTarget === this.endMarker) {
             this.endTime = Math.max(time, this.startTime + 1); // Keep at least 1 second gap
+        // End time updated
         }
         
         this.updateTimelineMarkers();
@@ -313,10 +320,15 @@ class VideoCutterApp {
 
     // Update timeline marker positions
     updateTimelineMarkers() {
-        if (!this.timelineDuration || this.timelineDuration === 0) return;
+        if (!this.timelineDuration || this.timelineDuration === 0) {
+            console.warn('Cannot update timeline markers: no duration set');
+            return;
+        }
         
         const startPercentage = Math.max(0, Math.min(100, (this.startTime / this.timelineDuration) * 100));
         const endPercentage = Math.max(0, Math.min(100, (this.endTime / this.timelineDuration) * 100));
+        
+        // Timeline markers updated
         
         // Account for marker width and timeline padding
         const timelineWidth = this.timeline.clientWidth;

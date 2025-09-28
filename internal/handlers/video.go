@@ -157,6 +157,8 @@ func (vh *VideoHandler) Cut(c *fiber.Ctx) error {
 	outputFilename := vh.fileService.GenerateOutputFilename(req.Filename)
 	outputPath := vh.fileService.GetFilePath(outputFilename)
 
+// Cut parameters logged at debug level (suppressed in production)
+
 	// Perform video cutting
 	if err := vh.videoService.CutVideo(inputPath, outputPath, req.StartTime, req.EndTime); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
