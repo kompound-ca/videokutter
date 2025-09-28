@@ -40,7 +40,11 @@ func main() {
 	})
 
 	// Middleware
-	app.Use(logger.New())
+	// Enable HTTP request logging only if LOG_REQUESTS is not set to "false" or "none"
+	logRequests := os.Getenv("LOG_REQUESTS")
+	if logRequests != "false" && logRequests != "none" {
+		app.Use(logger.New())
+	}
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
