@@ -20,6 +20,10 @@ func main() {
 	videoService := services.NewVideoService()
 	fileService := services.NewFileService()
 	cleanupService := services.NewCleanupService(fileService)
+	
+	// Perform startup cleanup to remove any leftover files from previous container runs
+	// This is crucial since user sessions are lost during container restarts
+	cleanupService.PerformStartupCleanup()
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{

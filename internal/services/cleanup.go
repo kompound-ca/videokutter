@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -47,6 +48,111 @@ func NewCleanupService(fileService *FileService) *CleanupService {
 	go cs.startCleanupRoutine()
 	
 	return cs
+}
+
+// PerformStartupCleanup cleans all files and chunks when the container starts
+// This ensures a clean state since user sessions are lost during container restarts
+func (cs *CleanupService) PerformStartupCleanup() {
+	log.Println("[STARTUP] Starting cleanup of temp directory...")
+	
+	// Clean up all files in temp directory (except chunks directory)
+	cs.cleanupTempFiles()
+	
+	// Clean up all chunk directories and their contents
+	cs.cleanupAllChunks()
+	
+	log.Println("[STARTUP] Temp directory cleanup completed")
+}
+
+// cleanupTempFiles removes all files in temp directory except the chunks directory
+func (cs *CleanupService) cleanupTempFiles() {
+	entries, err := os.ReadDir(cs.tempDir)
+	if err != nil {
+		log.Printf("[STARTUP] Warning: failed to read temp directory %s: %v", cs.tempDir, err)
+		return
+	}
+	
+	fileCount := 0
+	for _, entry := range entries {
+		// Skip the chunks directory - we'll handle it separately
+		if entry.IsDir() && entry.Name() == "chunks" {
+			continue
+		}
+		
+		itemPath := filepath.Join(cs.tempDir, entry.Name())
+		
+		if entry.IsDir() {
+			// Remove directory and all its contents
+			if err := os.RemoveAll(itemPath); err != nil {
+				log.Printf("[STARTUP] Warning: failed to remove directory %s: %v", itemPath, err)
+			} else {
+				log.Printf("[STARTUP] Removed directory: %s", itemPath)
+				fileCount++
+			}
+		} else {
+			// Remove file
+			if err := os.Remove(itemPath); err != nil {
+				log.Printf("[STARTUP] Warning: failed to remove file %s: %v", itemPath, err)
+			} else {
+				log.Printf("[STARTUP] Removed file: %s", itemPath)
+				fileCount++
+			}
+		}
+	}
+	
+	if fileCount > 0 {
+		log.Printf("[STARTUP] Cleaned up %d items from temp directory", fileCount)
+	} else {
+		log.Println("[STARTUP] No files found in temp directory")
+	}
+}
+
+// cleanupAllChunks removes all chunk session directories but preserves the chunks directory itself
+func (cs *CleanupService) cleanupAllChunks() {
+	if _, err := os.Stat(cs.chunksDir); os.IsNotExist(err) {
+		log.Println("[STARTUP] Chunks directory does not exist, creating it...")
+		if err := os.MkdirAll(cs.chunksDir, 0755); err != nil {
+			log.Printf("[STARTUP] Warning: failed to create chunks directory: %v", err)
+		} else {
+			log.Printf("[STARTUP] Created chunks directory: %s", cs.chunksDir)
+		}
+		return
+	}
+	
+	entries, err := os.ReadDir(cs.chunksDir)
+	if err != nil {
+		log.Printf("[STARTUP] Warning: failed to read chunks directory %s: %v", cs.chunksDir, err)
+		return
+	}
+	
+	chunkDirCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			// Remove any stray files in chunks directory
+			filePath := filepath.Join(cs.chunksDir, entry.Name())
+			if err := os.Remove(filePath); err != nil {
+				log.Printf("[STARTUP] Warning: failed to remove stray file in chunks dir %s: %v", filePath, err)
+			} else {
+				log.Printf("[STARTUP] Removed stray file from chunks: %s", filePath)
+			}
+			continue
+		}
+		
+		// Remove chunk session directory and all its contents
+		chunkSessionDir := filepath.Join(cs.chunksDir, entry.Name())
+		if err := os.RemoveAll(chunkSessionDir); err != nil {
+			log.Printf("[STARTUP] Warning: failed to remove chunk session directory %s: %v", chunkSessionDir, err)
+		} else {
+			log.Printf("[STARTUP] Removed chunk session directory: %s", chunkSessionDir)
+			chunkDirCount++
+		}
+	}
+	
+	if chunkDirCount > 0 {
+		log.Printf("[STARTUP] Cleaned up %d chunk session directories", chunkDirCount)
+	} else {
+		log.Println("[STARTUP] No chunk session directories found")
+	}
 }
 
 // CreateSession creates a new file session for tracking
