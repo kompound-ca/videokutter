@@ -429,7 +429,7 @@ class VideoCutterApp {
             // Add error handler for video loading
             this.videoPlayer.addEventListener('error', (e) => {
                 console.error('Video loading error:', e);
-                this.showVideoError('Video preview not supported by your browser.');
+                this.showSimpleError('Video preview not supported by your browser.');
             });
             
             this.videoPlayer.addEventListener('loadedmetadata', () => {
@@ -455,26 +455,17 @@ class VideoCutterApp {
         console.log('Loading video preview immediately:', this.videoPlayer.src);
         
         // Add error handler for video loading
-        this.videoPlayer.addEventListener('error', async (e) => {
+        this.videoPlayer.addEventListener('error', (e) => {
             console.error('Video loading error:', e);
-            // Attempt to generate a browser-compatible preview for problematic formats (e.g., MOV in Firefox)
-            try {
-                const original = this.uploadResponse ? this.uploadResponse.filename : null;
-                if (original && /\.mov$/i.test(original)) {
-                    // Call preview generation endpoint
-                    const resp = await fetch(`/api/generate-preview/${encodeURIComponent(original)}`, { method: 'POST' });
-                    const result = await resp.json();
-                    if (result.success && result.data && result.data.preview_filename) {
-                        const previewName = result.data.preview_filename;
-                        this.videoPlayer.src = `/api/preview/${encodeURIComponent(previewName)}`;
-                        console.log('Loading generated browser-compatible preview:', this.videoPlayer.src);
-                        return;
-                    }
-                }
-            } catch (err) {
-                console.error('Failed generating preview:', err);
+            const original = this.uploadResponse ? this.uploadResponse.filename : '';
+            let message = 'Video preview not supported by your browser. You can still cut the video below.';
+            
+            // Show specific message for MOV files
+            if (original && /\.mov$/i.test(original)) {
+                message = 'MOV preview not supported in this browser. You can still cut the video using the timeline below.';
             }
-            this.showSimpleError('Video preview is not supported by your browser. You can still cut the video below.');
+            
+            this.showSimpleError(message);
         });
         
         this.videoPlayer.addEventListener('loadedmetadata', () => {
@@ -907,14 +898,19 @@ class VideoCutterApp {
     
     // Upload Session Timer Methods (for cutting phase)
     async startUploadCountdownTimer() {
+        console.log('Starting upload countdown timer with sessionID:', this.sessionID);
         if (!this.sessionID) {
             console.warn('No session ID available for upload countdown timer');
             return;
         }
         
         // Show the upload timer
+        console.log('Upload timer element:', this.uploadSessionTimer);
         if (this.uploadSessionTimer) {
             this.uploadSessionTimer.style.display = 'flex';
+            console.log('Upload timer displayed');
+        } else {
+            console.error('Upload timer element not found');
         }
         
         // Clear any existing upload timer
@@ -947,7 +943,10 @@ class VideoCutterApp {
             const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
             const result = await response.json();
             
+            console.log('Upload countdown API response:', result);
+            
             if (result.success && result.data) {
+                console.log('Session phase:', result.data.phase, 'Remaining seconds:', result.data.remaining_seconds);
                 // Only update if we're in the 'cut' phase (not processed yet)
                 if (result.data.phase === 'cut') {
                     const remainingSeconds = result.data.remaining_seconds;
@@ -958,16 +957,22 @@ class VideoCutterApp {
                     }
                     
                     // Update countdown display
-                    this.uploadCountdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    console.log('Updating upload countdown to:', this.formatCountdown(remainingSeconds));
+                    if (this.uploadCountdownTime) {
+                        this.uploadCountdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    } else {
+                        console.error('Upload countdown time element not found');
+                    }
                     
                     // Update timer styling based on remaining time
                     this.updateUploadTimerStyling(remainingSeconds);
                 } else {
+                    console.log('Not in cut phase, stopping upload timer');
                     // Video was cut, stop upload timer
                     this.stopUploadCountdownTimer();
                 }
             } else {
-                console.warn('Failed to get upload session time remaining:', result.error);
+                console.warn('Failed to get upload session time remaining:', result.error || result.message);
             }
         } catch (error) {
             console.error('Error updating upload countdown:', error);
@@ -999,6 +1004,7 @@ class VideoCutterApp {
 
     // Download Session Timer Methods (for download phase)
     async startCountdownTimer() {
+        console.log('Starting download countdown timer with sessionID:', this.sessionID);
         if (!this.sessionID) {
             console.warn('No session ID available for countdown timer');
             return;
@@ -1039,7 +1045,10 @@ class VideoCutterApp {
             const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
             const result = await response.json();
             
+            console.log('Download countdown API response:', result);
+            
             if (result.success && result.data) {
+                console.log('Download phase:', result.data.phase, 'Remaining seconds:', result.data.remaining_seconds);
                 // Only update if we're in the 'download' phase (video was processed)
                 if (result.data.phase === 'download') {
                     const remainingSeconds = result.data.remaining_seconds;
@@ -1050,12 +1059,17 @@ class VideoCutterApp {
                     }
                     
                     // Update countdown display
-                    this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    console.log('Updating download countdown to:', this.formatCountdown(remainingSeconds));
+                    if (this.countdownTime) {
+                        this.countdownTime.textContent = this.formatCountdown(remainingSeconds);
+                    } else {
+                        console.error('Download countdown time element not found');
+                    }
                     
                     // Update timer styling based on remaining time
                     this.updateTimerStyling(remainingSeconds);
                 } else {
-                    console.log('Session not in download phase yet');
+                    console.log('Session not in download phase yet, phase is:', result.data.phase);
                 }
                 
             } else {
