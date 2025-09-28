@@ -59,6 +59,13 @@ class VideoCutterApp {
         this.countdownTime = document.getElementById('countdown-time');
         this.uploadSessionTimer = document.getElementById('upload-session-timer');
         this.uploadCountdownTime = document.getElementById('upload-countdown-time');
+        
+        console.log('Timer elements initialized:', {
+            sessionTimer: !!this.sessionTimer,
+            countdownTime: !!this.countdownTime,
+            uploadSessionTimer: !!this.uploadSessionTimer,
+            uploadCountdownTime: !!this.uploadCountdownTime
+        });
 
         // Error elements
         this.errorMessage = document.getElementById('error-message');
@@ -195,6 +202,7 @@ class VideoCutterApp {
             // Store upload response data
             this.uploadResponse = completeResult.data;
             this.sessionID = completeResult.data.session_id;
+            console.log('Upload complete - Session ID:', this.sessionID);
             
             this.progressFill.style.width = '100%';
             this.progressText.textContent = 'Upload complete! Loading preview...';
@@ -205,13 +213,16 @@ class VideoCutterApp {
             // Load video player first (fast)
             this.loadVideoPlayerImmediate();
             
-            // Start upload countdown timer (for cutting phase)
-            this.startUploadCountdownTimer();
-            
             // Fetch metadata in background after a short delay (slow)
             setTimeout(() => {
                 this.fetchVideoMetadata(); // Don't await - run in parallel
             }, 100); // Small delay to let video start loading first
+            
+            // Start upload countdown timer after UI elements are ready
+            setTimeout(() => {
+                console.log('Attempting to start upload countdown timer...');
+                this.startUploadCountdownTimer();
+            }, 500); // Delay to ensure DOM elements are ready
             
         } catch (error) {
             this.progressContainer.style.display = 'none';
@@ -429,7 +440,15 @@ class VideoCutterApp {
             // Add error handler for video loading
             this.videoPlayer.addEventListener('error', (e) => {
                 console.error('Video loading error:', e);
-                this.showSimpleError('Video preview not supported by your browser.');
+                const original = this.currentMetadata ? this.currentMetadata.filename : '';
+                let message = 'Video preview not supported by your browser. You can still cut the video below.';
+                
+                // Show specific message for MOV files
+                if (original && /\.mov$/i.test(original)) {
+                    message = 'MOV preview not supported in this browser. You can still cut the video using the timeline below.';
+                }
+                
+                this.showSimpleError(message);
             });
             
             this.videoPlayer.addEventListener('loadedmetadata', () => {
@@ -814,6 +833,7 @@ class VideoCutterApp {
                 // Stop upload countdown since video is now cut
                 this.stopUploadCountdownTimer();
                 this.showSection('download-section');
+                console.log('About to start download countdown timer...');
                 this.startCountdownTimer();
             } else {
                 throw new Error(result.message || 'Cut operation failed');
