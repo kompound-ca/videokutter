@@ -13,12 +13,12 @@ services:
       - videocutter_network
     environment:
       - PORT=8080
-      - COMPOSE_PROFILES=${COMPOSE_PROFILES:-production}
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES:-production}  # Pass profile to container
       - TEMP_DIR=/app/temp
       - LOG_REQUESTS=${LOG_REQUESTS:-false}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10737418240}
-      - DOMAIN=${DOMAIN:-videocutter.local}
+      - DOMAIN=${DOMAIN:-videocutter.local}  # Pass domain for logging
       - JWT_SECRET=${JWT_SECRET}
     volumes:
       - "${HOST_UPLOAD_DIR:-./temp}:/app/temp"
@@ -33,11 +33,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3200M
-          cpus: '1.8'
+          memory: 3200M     # Increased to 1.6GB per instance (3.2GB total, leaves 800MB for system/nginx)
+          cpus: '1.8'       # 2 instances × 0.9 = 1.8 vCPU (leaves 0.2 for overhead)
         reservations:
-          memory: 1600M
-          cpus: '0.9'
+          memory: 1600M      # Higher reservation for memory-intensive chunk caching
+          cpus: '0.9'       # Reserve minimum CPU per instance
 
   # Load balancer using nginx with SSL (only in production mode)
   nginx-lb:
