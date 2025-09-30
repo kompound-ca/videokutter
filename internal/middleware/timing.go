@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ type TimingTracker struct {
 	events map[string][]TimingEvent
 	mutex  sync.RWMutex
 	logger *json.Encoder
+	enableLogging bool
 }
 
 var globalTimingTracker *TimingTracker
@@ -32,9 +34,14 @@ var trackerOnce sync.Once
 // GetTimingTracker returns the singleton timing tracker
 func GetTimingTracker() *TimingTracker {
 	trackerOnce.Do(func() {
+		// Check if logging should be enabled based on LOG_LEVEL
+		logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
+		enableLogging := logLevel == "debug" || logLevel == "info" || logLevel == ""
+		
 		globalTimingTracker = &TimingTracker{
 			events: make(map[string][]TimingEvent),
 			logger: json.NewEncoder(os.Stdout),
+			enableLogging: enableLogging,
 		}
 	})
 	return globalTimingTracker
@@ -72,8 +79,10 @@ func (tt *TimingTracker) LogEvent(uploadID, event string, metadata map[string]in
 	// Add to events list
 	tt.events[uploadID] = append(events, timingEvent)
 	
-	// Log as JSON (bounded output)
-	tt.logger.Encode(timingEvent)
+	// Log as JSON only if logging is enabled (respects LOG_LEVEL)
+	if tt.enableLogging {
+		tt.logger.Encode(timingEvent)
+	}
 
 	// Keep only recent events to avoid memory issues (last 50 events per upload)
 	if len(tt.events[uploadID]) > 50 {
