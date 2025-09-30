@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -305,7 +306,30 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 	// sessionID := c.Query("session_id")
 	// Removed RecordDownload call to prevent timer extension
 
-	return c.SendFile(filePath)
+	// Check if running behind nginx (production mode)
+	isProduction := os.Getenv("COMPOSE_PROFILES") == "production"
+	
+	if isProduction {
+		// Use X-Accel-Redirect for nginx to serve file directly (much faster for downloads)
+		// Convert absolute path to nginx internal path
+		internalPath := "/temp/" + filepath.Base(filePath)
+		
+		// Set headers for nginx X-Accel-Redirect
+		c.Set("X-Accel-Redirect", internalPath)
+		c.Set("Content-Type", contentType)
+		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+		c.Set("Cache-Control", "no-cache")
+		
+		// Return 200 OK - nginx will handle the actual file serving
+		return c.SendStatus(fiber.StatusOK)
+	} else {
+		// Development mode: serve file directly
+		fmt.Printf("Serving file directly: %s\n", filename)
+		c.Set("Content-Type", contentType)
+		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+		c.Set("Cache-Control", "no-cache")
+		return c.SendFile(filePath)
+	}
 }
 
 // Preview serves the uploaded video file for preview
@@ -353,17 +377,36 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 			"preview_path": previewPath,
 		})
 		
-		fmt.Printf("Serving optimized preview for: %s\n", filename)
+		// Check if running behind nginx (production mode)
+		isProduction := os.Getenv("COMPOSE_PROFILES") == "production"
 		
-		// Serve optimized preview
-		c.Set("Content-Type", "video/mp4")
-		c.Set("Accept-Ranges", "bytes")
-		c.Set("Cache-Control", "public, max-age=3600")
-		c.Set("X-Content-Type-Options", "nosniff")
-		c.Set("Connection", "keep-alive")
-		c.Set("Content-Disposition", "inline")
-		
-		return c.SendFile(previewPath)
+		if isProduction {
+			fmt.Printf("Serving optimized preview via nginx: %s\n", filename)
+			
+			// Use X-Accel-Redirect for nginx to serve file directly (much faster)
+			// Convert absolute path to nginx internal path
+			internalPath := "/temp/" + filepath.Base(previewPath)
+			
+			// Set headers for nginx X-Accel-Redirect
+			c.Set("X-Accel-Redirect", internalPath)
+			c.Set("Content-Type", "video/mp4")
+			c.Set("Accept-Ranges", "bytes")
+			c.Set("Cache-Control", "public, max-age=86400")
+			c.Set("X-Content-Type-Options", "nosniff")
+			c.Set("Content-Disposition", "inline")
+			
+			// Return 200 OK - nginx will handle the actual file serving
+			return c.SendStatus(fiber.StatusOK)
+		} else {
+			// Development mode: serve optimized preview directly
+			fmt.Printf("Serving optimized preview directly: %s\n", filename)
+			c.Set("Content-Type", "video/mp4")
+			c.Set("Accept-Ranges", "bytes")
+			c.Set("Cache-Control", "public, max-age=86400")
+			c.Set("X-Content-Type-Options", "nosniff")
+			c.Set("Content-Disposition", "inline")
+			return c.SendFile(previewPath)
+		}
 	}
 
 	// Fall back to original video if no optimized preview available

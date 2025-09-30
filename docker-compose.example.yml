@@ -58,6 +58,7 @@ services:
       - ./nginx-lb.conf:/etc/nginx/templates/nginx.conf.template:ro
       - ./ssl:/etc/nginx/ssl:ro
       - ./certbot-data:/var/www/certbot:ro
+      - "${HOST_UPLOAD_DIR:-./temp}:/app/temp:ro"  # Mount temp directory for direct preview serving
     command: >
       sh -c "
       apk add --no-cache gettext &&

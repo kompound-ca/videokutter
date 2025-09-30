@@ -68,7 +68,7 @@ func (vs *VideoService) GetVideoMetadata(filePath string) (*models.VideoMetadata
 	return metadata, nil
 }
 
-// CutVideo performs lossless video cutting using ffmpeg
+// CutVideo performs lossless video cutting using ffmpeg with optimized performance
 func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime, endTime time.Duration) error {
 	// Calculate duration for the cut
 	cutDuration := endTime - startTime
@@ -80,22 +80,37 @@ func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime,
 	startTimeStr := formatDuration(startTime)
 	durationStr := formatDuration(cutDuration)
 
-	// Use ffmpeg to cut the video losslessly
+	fmt.Printf("Starting video cut: %s -> %s (start: %s, duration: %s)\n", 
+		filepath.Base(inputPath), filepath.Base(outputPath), startTimeStr, durationStr)
+
+	// Use optimized ffmpeg command for fastest stream copy
 	cmd := exec.Command("ffmpeg",
+		"-hide_banner",           // Reduce output verbosity
+		"-loglevel", "warning",   // Only show warnings and errors
+		"-ss", startTimeStr,      // Seek before input (faster)
 		"-i", inputPath,
-		"-ss", startTimeStr,
-		"-t", durationStr,
-		"-c", "copy", // Copy streams without re-encoding (lossless)
-		"-avoid_negative_ts", "make_zero",
-		"-y", // Overwrite output file if exists
+		"-t", durationStr,        // Duration to copy
+		"-c", "copy",            // Stream copy (no re-encoding)
+		"-avoid_negative_ts", "make_zero", // Handle timestamp issues
+		"-map_metadata", "0",    // Copy metadata
+		"-movflags", "faststart", // Optimize for streaming (MP4)
+		"-fflags", "+genpts",    // Generate presentation timestamps
+		"-y",                    // Overwrite output file
 		outputPath)
+
+	// Set up progress monitoring
+	start := time.Now()
 
 	// Run command and capture output
 	output, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+
 	if err != nil {
+		fmt.Printf("FFmpeg error after %v: %s\n", elapsed, string(output))
 		return fmt.Errorf("ffmpeg failed: %w, stderr: %s", err, string(output))
 	}
 
+	fmt.Printf("Video cut completed in %v\n", elapsed)
 	return nil
 }
 

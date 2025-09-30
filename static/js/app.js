@@ -16,6 +16,17 @@ class VideoCutterApp {
         this.userID = null;
         this.sessionReady = false; // Track if session is initialized
         
+        // Session state persistence
+        this.sessionState = {
+            phase: 'upload', // upload, player, processing, download
+            filename: null,
+            metadata: null,
+            startTime: 0,
+            endTime: 0,
+            outputFilename: null,
+            sessionID: null
+        };
+        
         this.initializeElements();
         this.bindEvents();
         this.showInitializing();
@@ -80,8 +91,13 @@ class VideoCutterApp {
         this.startMarker.addEventListener('mousedown', this.startDrag.bind(this));
         this.endMarker.addEventListener('mousedown', this.startDrag.bind(this));
         this.timeline.addEventListener('click', this.handleTimelineClick.bind(this));
+        this.timeline.addEventListener('mousemove', this.handleTimelineHover.bind(this));
+        this.timeline.addEventListener('mouseleave', this.hideTimelineTooltip.bind(this));
         document.addEventListener('mousemove', this.handleDrag.bind(this));
         document.addEventListener('mouseup', this.stopDrag.bind(this));
+        
+        // Initialize timeline tooltip
+        this.initializeTimelineTooltip();
 
         // Video player events
         this.videoPlayer.addEventListener('loadedmetadata', this.initializeTimeline.bind(this));
@@ -100,11 +116,20 @@ class VideoCutterApp {
         this.jwtToken = localStorage.getItem('jwt_token');
         this.userID = localStorage.getItem('user_id');
         
+        // Try to restore session state
+        this.restoreSessionState();
+        
         if (this.jwtToken && this.userID) {
             console.log('Found existing JWT token for user:', this.userID);
             // Use existing token (browser fingerprint should be the same)
             this.sessionReady = true;
-            this.restoreUploadSection();
+            
+            // Restore previous session or show upload
+            if (this.sessionState.phase !== 'upload' && this.sessionState.filename) {
+                this.restoreSessionWorkflow();
+            } else {
+                this.restoreUploadSection();
+            }
         } else {
             console.log('No existing token found, requesting new session');
             await this.requestNewSession();
@@ -276,10 +301,18 @@ class VideoCutterApp {
             console.log('Upload complete - Session ID:', this.sessionID);
             
             this.progressFill.style.width = '100%';
-            this.progressText.textContent = 'Upload complete! Loading preview...';
+            this.progressText.innerHTML = `
+                <span class="status-indicator success">
+                    <div class="status-dot"></div>
+                    Upload complete! Loading preview...
+                </span>
+            `;
             
-            // Show player section immediately for better UX
-            this.showSection('player-section');
+            // Show player section with transition message
+            this.showSection('player-section', 'Loading video preview...');
+            
+            // Update session phase
+            this.updateSessionPhase('player');
             
             // Load video player first (fast)
             this.loadVideoPlayerImmediate();
@@ -330,7 +363,19 @@ class VideoCutterApp {
         const updateProgress = () => {
             const progress = Math.round((uploadedCount / totalChunks) * 100);
             this.progressFill.style.width = `${progress}%`;
-            this.progressText.textContent = `Uploading... ${progress}% (${uploadedCount}/${totalChunks} chunks)`;
+            
+            // Enhanced progress display with status indicator
+            this.progressText.innerHTML = `
+                <span class="status-indicator loading">
+                    <div class="status-dot"></div>
+                    Uploading... ${progress}% (${uploadedCount}/${totalChunks} chunks)
+                </span>
+            `;
+            
+            // Add progress milestones
+            if (progress === 25 || progress === 50 || progress === 75) {
+                this.showTransitionMessage(`Upload ${progress}% complete`);
+            }
         };
         
         updateProgress();
@@ -610,14 +655,45 @@ class VideoCutterApp {
         this.startTime = 0;
         this.endTime = this.timelineDuration;
         
-        // Enable cut button early
-        this.cutButton.disabled = false;
-        
-        // Initialize timeline UI
-        this.updateTimelineMarkers();
-        this.updateTimeDisplay();
+        // Initialize timeline UI after a brief delay to ensure DOM is ready
+        setTimeout(() => {
+            this.initializeTimelineElements();
+            this.updateTimelineMarkers();
+            this.updateTimeDisplay();
+            
+            // Enable cut button after timeline is ready
+            if (this.cutButton) {
+                this.cutButton.disabled = false;
+            }
+        }, 100);
         
         console.log('Timeline initialized with duration:', this.timelineDuration);
+    }
+    
+    // Ensure timeline elements are properly initialized
+    initializeTimelineElements() {
+        // Re-get timeline elements in case they were dynamically created
+        this.timeline = document.getElementById('timeline');
+        this.startMarker = document.getElementById('start-marker');
+        this.endMarker = document.getElementById('end-marker');
+        this.timelineSelection = document.getElementById('timeline-selection');
+        
+        if (!this.timeline || !this.startMarker || !this.endMarker || !this.timelineSelection) {
+            console.error('Timeline elements not found during initialization:', {
+                timeline: !!this.timeline,
+                startMarker: !!this.startMarker,
+                endMarker: !!this.endMarker,
+                timelineSelection: !!this.timelineSelection
+            });
+            return false;
+        }
+        
+        // Initialize tooltip if not already done
+        if (!this.timelineTooltip) {
+            this.initializeTimelineTooltip();
+        }
+        
+        return true;
     }
     
     // Load video in player (legacy method - kept for compatibility)
@@ -742,12 +818,47 @@ class VideoCutterApp {
         this.cutButton.disabled = false;
     }
 
-    // Timeline drag handling
+    // Timeline tooltip methods
+    initializeTimelineTooltip() {
+        if (!this.timeline) return;
+        
+        // Create tooltip element
+        this.timelineTooltip = document.createElement('div');
+        this.timelineTooltip.className = 'timeline-tooltip';
+        this.timeline.appendChild(this.timelineTooltip);
+    }
+    
+    handleTimelineHover(e) {
+        if (this.isDragging || !this.timelineDuration || !this.timelineTooltip) return;
+        
+        const timelineRect = this.timeline.getBoundingClientRect();
+        const x = e.clientX - timelineRect.left;
+        const percentage = Math.max(0, Math.min(1, x / timelineRect.width));
+        const time = percentage * this.timelineDuration;
+        
+        // Update tooltip content and position
+        this.timelineTooltip.textContent = this.formatDuration(time);
+        this.timelineTooltip.style.left = `${x}px`;
+        this.timelineTooltip.classList.add('visible');
+    }
+    
+    hideTimelineTooltip() {
+        if (this.timelineTooltip) {
+            this.timelineTooltip.classList.remove('visible');
+        }
+    }
+    
+    // Enhanced timeline drag handling with visual feedback
     startDrag(e) {
         e.preventDefault();
         this.isDragging = true;
         this.dragTarget = e.target;
+        this.dragTarget.classList.add('dragging');
         document.body.style.cursor = 'grabbing';
+        this.hideTimelineTooltip();
+        
+        // Add dragging state to timeline
+        this.timeline.classList.add('dragging-active');
     }
 
     handleDrag(e) {
@@ -755,26 +866,146 @@ class VideoCutterApp {
         
         const timelineRect = this.timeline.getBoundingClientRect();
         const x = e.clientX - timelineRect.left;
-        const percentage = Math.max(0, Math.min(1, x / timelineRect.width));
+        
+        // Account for timeline padding and marker width when calculating time
+        const trackPadding = 10;
+        const markerWidth = 20;
+        const usableWidth = timelineRect.width - (2 * trackPadding) - markerWidth;
+        const adjustedX = Math.max(0, Math.min(usableWidth, x - trackPadding));
+        const percentage = adjustedX / usableWidth;
         const time = percentage * this.timelineDuration;
         
         if (this.dragTarget === this.startMarker) {
-            this.startTime = Math.min(time, this.endTime - 1); // Keep at least 1 second gap
-        // Start time updated
+            this.startTime = Math.max(0, Math.min(time, this.endTime - 1)); // Keep at least 1 second gap
+            this.showTransitionFeedback('Start: ' + this.formatDuration(this.startTime));
         } else if (this.dragTarget === this.endMarker) {
-            this.endTime = Math.max(time, this.startTime + 1); // Keep at least 1 second gap
-        // End time updated
+            this.endTime = Math.min(this.timelineDuration, Math.max(time, this.startTime + 1)); // Keep at least 1 second gap
+            this.showTransitionFeedback('End: ' + this.formatDuration(this.endTime));
         }
         
-        this.updateTimelineMarkers();
-        this.updateTimeDisplay();
+        // Debounce timeline updates for better performance
+        this.debouncedTimelineUpdate();
     }
 
     stopDrag() {
         if (this.isDragging) {
             this.isDragging = false;
-            this.dragTarget = null;
+            if (this.dragTarget) {
+                this.dragTarget.classList.remove('dragging');
+                this.dragTarget = null;
+            }
             document.body.style.cursor = 'default';
+            
+            // Remove dragging state from timeline
+            if (this.timeline) {
+                this.timeline.classList.remove('dragging-active');
+            }
+            
+            // Final update to ensure accuracy
+            this.updateTimelineMarkers();
+            this.updateTimeDisplay();
+        }
+    }
+    
+    // Debounced timeline update for smoother performance
+    debouncedTimelineUpdate() {
+        if (this.timelineUpdateTimeout) {
+            clearTimeout(this.timelineUpdateTimeout);
+        }
+        
+        // Update markers immediately for visual feedback
+        this.updateTimelineMarkers();
+        
+        // Debounce the display update which includes input fields and state saving
+        this.timelineUpdateTimeout = setTimeout(() => {
+            this.updateTimeDisplay();
+        }, 100); // Reduced frequency for text updates and state saving
+    }
+    
+    // Show quick feedback during interactions
+    showTransitionFeedback(text) {
+        // Remove existing feedback
+        const existing = document.querySelector('.transition-feedback');
+        if (existing) {
+            existing.remove();
+        }
+        
+        const feedback = document.createElement('div');
+        feedback.className = 'transition-feedback';
+        feedback.textContent = text;
+        feedback.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-family: 'JetBrains Mono', monospace;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        `;
+        
+        document.body.appendChild(feedback);
+        
+        requestAnimationFrame(() => {
+            feedback.style.opacity = '0.9';
+        });
+        
+        setTimeout(() => {
+            feedback.style.opacity = '0';
+            setTimeout(() => {
+                if (document.body.contains(feedback)) {
+                    document.body.removeChild(feedback);
+                }
+            }, 200);
+        }, 800);
+    }
+    
+    // Progress monitoring for video operations
+    startProgressMonitoring() {
+        if (this.progressMonitorInterval) {
+            clearInterval(this.progressMonitorInterval);
+        }
+        
+        this.progressPhase = 0;
+        const phases = [
+            'Analyzing video structure...',
+            'Processing video segments...',
+            'Optimizing output quality...',
+            'Finalizing video file...'
+        ];
+        
+        this.progressMonitorInterval = setInterval(() => {
+            if (this.progressPhase < phases.length) {
+                this.updateProgressPhase(phases[this.progressPhase]);
+                this.progressPhase++;
+            } else {
+                // Stop the interval when we've shown all phases
+                clearInterval(this.progressMonitorInterval);
+                this.progressMonitorInterval = null;
+            }
+        }, 2500); // Slower phase transitions for better performance
+    }
+    
+    updateProgressPhase(message) {
+        const statusElement = document.querySelector('.processing-animation .status-indicator');
+        if (statusElement) {
+            statusElement.innerHTML = `
+                <div class="status-dot"></div>
+                ${message}
+            `;
+        }
+    }
+    
+    stopProgressMonitoring() {
+        if (this.progressMonitorInterval) {
+            clearInterval(this.progressMonitorInterval);
+            this.progressMonitorInterval = null;
         }
     }
 
@@ -784,7 +1015,13 @@ class VideoCutterApp {
         
         const timelineRect = this.timeline.getBoundingClientRect();
         const x = e.clientX - timelineRect.left;
-        const percentage = x / timelineRect.width;
+        
+        // Account for timeline padding and marker width when calculating time
+        const trackPadding = 10;
+        const markerWidth = 20;
+        const usableWidth = timelineRect.width - (2 * trackPadding) - markerWidth;
+        const adjustedX = Math.max(0, Math.min(usableWidth, x - trackPadding));
+        const percentage = adjustedX / usableWidth;
         const time = percentage * this.timelineDuration;
         
         // Determine which marker to move based on proximity
@@ -808,26 +1045,42 @@ class VideoCutterApp {
             return;
         }
         
+        // Ensure timeline elements exist
+        if (!this.timeline || !this.startMarker || !this.endMarker || !this.timelineSelection) {
+            console.warn('Timeline elements not found');
+            return;
+        }
+        
         const startPercentage = Math.max(0, Math.min(100, (this.startTime / this.timelineDuration) * 100));
         const endPercentage = Math.max(0, Math.min(100, (this.endTime / this.timelineDuration) * 100));
         
-        // Timeline markers updated
+        console.log(`Timeline update: start=${this.startTime}s (${startPercentage.toFixed(1)}%), end=${this.endTime}s (${endPercentage.toFixed(1)}%), duration=${this.timelineDuration}s`);
         
-        // Account for marker width and timeline padding
+        // Get timeline dimensions with proper calculations
         const timelineWidth = this.timeline.clientWidth;
         const markerWidth = 20; // matches CSS
-        const padding = 10; // matches CSS
-        const usableWidth = timelineWidth - (2 * padding) - markerWidth;
+        const trackPadding = 10; // CSS padding on timeline track
         
-        const startPos = padding + (startPercentage / 100) * usableWidth;
-        const endPos = padding + (endPercentage / 100) * usableWidth;
+        // Calculate usable width (total width minus padding and one marker width)
+        const usableWidth = timelineWidth - (2 * trackPadding) - markerWidth;
         
+        // Calculate positions relative to the track
+        const startPos = trackPadding + (startPercentage / 100) * usableWidth;
+        const endPos = trackPadding + (endPercentage / 100) * usableWidth;
+        
+        // Apply positions
         this.startMarker.style.left = `${startPos}px`;
         this.endMarker.style.left = `${endPos}px`;
         
-        // Update selection area
-        this.timelineSelection.style.left = `${startPos + markerWidth/2}px`;
-        this.timelineSelection.style.width = `${Math.max(0, endPos - startPos)}px`;
+        // Update selection area (positioned between marker centers)
+        const selectionStart = startPos + (markerWidth / 2);
+        const selectionEnd = endPos + (markerWidth / 2);
+        const selectionWidth = Math.max(0, selectionEnd - selectionStart);
+        
+        this.timelineSelection.style.left = `${selectionStart}px`;
+        this.timelineSelection.style.width = `${selectionWidth}px`;
+        
+        console.log(`Markers positioned: start=${startPos}px, end=${endPos}px, selection=${selectionStart}px-${selectionEnd}px (width=${selectionWidth}px)`);
     }
 
     // Update time display
@@ -835,6 +1088,11 @@ class VideoCutterApp {
         this.startTimeInput.value = this.formatDuration(this.startTime);
         this.endTimeInput.value = this.formatDuration(this.endTime);
         this.cutDuration.textContent = this.formatDuration(this.endTime - this.startTime);
+        
+        // Save state when timeline is modified
+        if (this.sessionReady) {
+            this.saveSessionState();
+        }
     }
 
     // Video progress update
@@ -851,13 +1109,13 @@ class VideoCutterApp {
         }
     }
 
-    // Cut video
+    // Cut video with enhanced feedback
     async cutVideo() {
         console.log('Cut video called');
         
         if (!this.currentMetadata) {
             console.error('No metadata available');
-            this.showError('No video metadata available. Please upload a video first.');
+            this.showEnhancedError('No video metadata available. Please upload a video first.', 'metadata-missing');
             return;
         }
         
@@ -868,7 +1126,12 @@ class VideoCutterApp {
             duration: this.timelineDuration
         });
         
-        this.showSection('processing-section');
+        // Show processing section with enhanced feedback
+        this.showSection('processing-section', 'Processing video cut...');
+        this.enhanceProcessingUI();
+        
+        // Start progress monitoring
+        this.startProgressMonitoring();
         
         try {
             const requestBody = {
@@ -900,16 +1163,28 @@ class VideoCutterApp {
             
             if (result.success && result.data) {
                 this.outputFilename = result.data.output_filename;
-                this.showSection('download-section');
-                // Start timer for download phase
-                this.startSessionTimer('download');
+                
+                // Stop progress monitoring and show success feedback
+                this.stopProgressMonitoring();
+                this.showProcessingSuccess();
+                
+                setTimeout(() => {
+                    this.showSection('download-section', 'Video ready for download!');
+                    
+                    // Update session phase
+                    this.updateSessionPhase('download');
+                    
+                    // Start timer for download phase
+                    this.startSessionTimer('download');
+                }, 1500);
             } else {
                 throw new Error(result.message || 'Cut operation failed');
             }
             
         } catch (error) {
             console.error('Cut error:', error);
-            this.showError(`Cut operation failed: ${error.message}`);
+            this.stopProgressMonitoring();
+            this.showEnhancedError(`Cut operation failed: ${error.message}`, 'processing-error');
         }
     }
 
@@ -922,16 +1197,179 @@ class VideoCutterApp {
     }
 
     // Utility functions
-    showSection(sectionId) {
+    showSection(sectionId, message = null) {
+        // Fade out current sections
         Object.values(this.sections).forEach(section => {
-            section.style.display = 'none';
+            section.classList.remove('active');
+            section.classList.add('section');
         });
-        document.getElementById(sectionId).style.display = 'block';
+        
+        // Small delay for smooth transition
+        setTimeout(() => {
+            Object.values(this.sections).forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            const targetSection = document.getElementById(sectionId);
+            if (targetSection) {
+                targetSection.style.display = 'block';
+                targetSection.classList.add('phase-transition');
+                targetSection.classList.add('active');
+                
+                // Show optional transition message
+                if (message) {
+                    this.showTransitionMessage(message);
+                }
+                
+                // Remove transition class after animation
+                setTimeout(() => {
+                    targetSection.classList.remove('phase-transition');
+                }, 600);
+            }
+        }, 100);
+    }
+    
+    showTransitionMessage(message) {
+        // Create temporary status indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'status-indicator loading';
+        indicator.innerHTML = `
+            <div class="status-dot"></div>
+            ${message}
+        `;
+        indicator.style.position = 'fixed';
+        indicator.style.top = '20px';
+        indicator.style.right = '20px';
+        indicator.style.zIndex = '1000';
+        indicator.style.opacity = '0';
+        indicator.style.transform = 'translateY(-20px)';
+        indicator.style.transition = 'all 0.3s ease';
+        
+        document.body.appendChild(indicator);
+        
+        // Animate in
+        setTimeout(() => {
+            indicator.style.opacity = '1';
+            indicator.style.transform = 'translateY(0)';
+        }, 100);
+        
+        // Remove after delay
+        setTimeout(() => {
+            indicator.style.opacity = '0';
+            indicator.style.transform = 'translateY(-20px)';
+            setTimeout(() => {
+                if (document.body.contains(indicator)) {
+                    document.body.removeChild(indicator);
+                }
+            }, 300);
+        }, 2500);
+    }
+    
+    enhanceProcessingUI() {
+        const processingSection = document.getElementById('processing-section');
+        if (!processingSection) return;
+        
+        const duration = this.endTime - this.startTime;
+        processingSection.innerHTML = `
+            <div class="card">
+                <h2>Processing Video</h2>
+                <div class="processing-animation">
+                    <div class="spinner"></div>
+                    <div class="status-indicator loading">
+                        <div class="status-dot"></div>
+                        Cutting video segment...
+                    </div>
+                    <div class="processing-details" style="margin-top: 20px; padding: 15px; background: #f7fafc; border-radius: 8px; text-align: left;">
+                        <p><strong>Segment Duration:</strong> ${this.formatDuration(duration)}</p>
+                        <p><strong>From:</strong> ${this.formatDuration(this.startTime)} <strong>To:</strong> ${this.formatDuration(this.endTime)}</p>
+                        <p><strong>Source:</strong> ${this.currentMetadata.filename}</p>
+                        <p class="processing-note" style="margin-top: 15px; font-style: italic; color: #718096;">This may take a moment depending on video size and complexity.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    showProcessingSuccess() {
+        const processingSection = document.getElementById('processing-section');
+        if (!processingSection) return;
+        
+        processingSection.innerHTML = `
+            <div class="card">
+                <h2>Processing Complete</h2>
+                <div class="processing-animation">
+                    <div class="success-icon">✅</div>
+                    <div class="status-indicator success" style="margin: 20px 0;">
+                        <div class="status-dot"></div>
+                        Video cut successfully!
+                    </div>
+                    <p style="color: #4a5568; margin: 15px 0;">Your video segment has been prepared and is ready for download.</p>
+                    <div class="status-indicator loading" style="margin-top: 15px;">
+                        <div class="status-dot"></div>
+                        Preparing download...
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     showError(message) {
         this.errorMessage.textContent = message;
         this.showSection('error-section');
+    }
+    
+    showEnhancedError(message, errorType = 'general') {
+        // Create enhanced error display
+        const errorSection = this.sections.error;
+        
+        let errorIcon = '⚠️';
+        let errorTitle = 'Error';
+        let suggestion = 'Please try again or refresh the page.';
+        
+        // Customize error based on type
+        switch(errorType) {
+            case 'processing-error':
+                errorIcon = '🔧';
+                errorTitle = 'Processing Error';
+                suggestion = 'The video processing failed. This might be due to unsupported format or server issues. Please try with a different video file.';
+                break;
+            case 'metadata-missing':
+                errorIcon = '📁';
+                errorTitle = 'Upload Required';
+                suggestion = 'Please upload a video file first before trying to cut it.';
+                break;
+            case 'network-error':
+                errorIcon = '🌐';
+                errorTitle = 'Connection Error';
+                suggestion = 'Check your internet connection and try again.';
+                break;
+        }
+        
+        errorSection.innerHTML = `
+            <div class="card error-card">
+                <div class="error-content">
+                    <div class="error-icon">${errorIcon}</div>
+                    <h2>${errorTitle}</h2>
+                    <div class="status-indicator error">
+                        <div class="status-dot"></div>
+                        ${message}
+                    </div>
+                    <p class="error-suggestion">${suggestion}</p>
+                    <div class="error-actions">
+                        <button class="btn btn-secondary" onclick="location.reload()">Refresh Page</button>
+                        <button class="btn btn-primary" id="retry-enhanced">Try Again</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        this.showSection('error-section');
+        
+        // Bind retry button
+        const retryBtn = document.getElementById('retry-enhanced');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', async () => await this.resetApp());
+        }
     }
     
     showInitializing() {
@@ -1196,6 +1634,108 @@ class VideoCutterApp {
         
         // Get a fresh JWT session (this will show upload section when complete)
         await this.requestNewSession();
+    }
+    
+    // Session State Persistence Methods
+    saveSessionState() {
+        const state = {
+            phase: this.sessionState.phase,
+            filename: this.currentMetadata ? this.currentMetadata.filename : null,
+            metadata: this.currentMetadata,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            timelineDuration: this.timelineDuration,
+            outputFilename: this.outputFilename,
+            sessionID: this.sessionID,
+            uploadResponse: this.uploadResponse,
+            timestamp: Date.now()
+        };
+        
+        try {
+            localStorage.setItem('videocutter_session_state', JSON.stringify(state));
+            console.log('Session state saved:', state.phase);
+        } catch (error) {
+            console.warn('Failed to save session state:', error);
+        }
+    }
+    
+    restoreSessionState() {
+        try {
+            const savedState = localStorage.getItem('videocutter_session_state');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+                
+                // Check if state is recent (within 30 minutes)
+                const thirtyMinutes = 30 * 60 * 1000;
+                if (Date.now() - state.timestamp > thirtyMinutes) {
+                    console.log('Saved session state is too old, clearing it');
+                    localStorage.removeItem('videocutter_session_state');
+                    return;
+                }
+                
+                // Restore state
+                this.sessionState.phase = state.phase || 'upload';
+                this.currentMetadata = state.metadata;
+                this.startTime = state.startTime || 0;
+                this.endTime = state.endTime || 0;
+                this.timelineDuration = state.timelineDuration || 0;
+                this.outputFilename = state.outputFilename;
+                this.sessionID = state.sessionID;
+                this.uploadResponse = state.uploadResponse;
+                
+                console.log('Session state restored:', this.sessionState.phase);
+            }
+        } catch (error) {
+            console.warn('Failed to restore session state:', error);
+            localStorage.removeItem('videocutter_session_state');
+        }
+    }
+    
+    async restoreSessionWorkflow() {
+        console.log('Restoring session workflow for phase:', this.sessionState.phase);
+        
+        switch (this.sessionState.phase) {
+            case 'player':
+                this.showSection('player-section', 'Restoring your session...');
+                
+                // Restore video player
+                if (this.currentMetadata && this.currentMetadata.filename) {
+                    this.loadVideoPlayerImmediate();
+                    this.displayVideoMetadata();
+                    
+                    // Restore timeline if we have duration
+                    if (this.timelineDuration > 0) {
+                        this.updateTimelineMarkers();
+                        this.updateTimeDisplay();
+                        this.cutButton.disabled = false;
+                    }
+                    
+                    this.startSessionTimer('cut');
+                    this.showTransitionMessage('Session restored - continue editing');
+                }
+                break;
+                
+            case 'download':
+                if (this.outputFilename) {
+                    this.showSection('download-section', 'Your video is ready!');
+                    this.startSessionTimer('download');
+                    this.showTransitionMessage('Previous cut restored - ready for download');
+                } else {
+                    // Fallback to upload if no output file
+                    this.sessionState.phase = 'upload';
+                    this.restoreUploadSection();
+                }
+                break;
+                
+            default:
+                this.restoreUploadSection();
+                break;
+        }
+    }
+    
+    updateSessionPhase(phase) {
+        this.sessionState.phase = phase;
+        this.saveSessionState();
     }
 }
 
