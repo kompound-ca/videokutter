@@ -7,16 +7,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    expose:
-      - "8080"
+    ports:
+      - "${PORT:-8080}:8080"  # Always expose port for development access
     networks:
       - videocutter_network
     environment:
       - PORT=8080
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES:-production}
       - TEMP_DIR=/app/temp
       - LOG_REQUESTS=${LOG_REQUESTS:-false}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10737418240}
+      - DOMAIN=${DOMAIN:-videocutter.local}
     volumes:
       - "${HOST_UPLOAD_DIR:-./temp}:/app/temp"
     init: true
@@ -30,16 +32,18 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3200M     # Increased to 1.6GB per instance (3.2GB total, leaves 800MB for system/nginx)
-          cpus: '1.8'       # 2 instances × 0.9 = 1.8 vCPU (leaves 0.2 for overhead)
+          memory: 3200M
+          cpus: '1.8'
         reservations:
-          memory: 1600M      # Higher reservation for memory-intensive chunk caching
-          cpus: '0.9'       # Reserve minimum CPU per instance
+          memory: 1600M
+          cpus: '0.9'
 
-  # Load balancer using nginx with SSL
+  # Load balancer using nginx with SSL (only in production mode)
   nginx-lb:
     image: nginx:alpine
     container_name: videocutter-nginx-lb
+    profiles:
+      - production  # Only start with --profile production
     ports:
       - "80:80"
       - "443:443"
@@ -69,10 +73,12 @@ services:
       "
     restart: unless-stopped
 
-  # Certbot for SSL certificates with Cloudflare DNS
+  # Certbot for SSL certificates with Cloudflare DNS (only in production mode)
   certbot:
     image: certbot/dns-cloudflare:latest
     container_name: videocutter-certbot
+    profiles:
+      - production  # Only start with --profile production
     environment:
       - DOMAIN=${DOMAIN:-videocutter.local}
     volumes:

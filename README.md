@@ -1,77 +1,65 @@
-# 🎬 Kompound VideoCutter
+# Kompound VideoCutter
 
-A lossless video cutting web application for Kompound.ca, built with Go, Fiber, and FFmpeg. Upload videos up to 10GB, select cut ranges with an interactive timeline, and download processed videos instantly.
+Web-based video cutting tool built with Go and FFmpeg. Upload videos, select cut ranges, and download processed files.
 
-## ✨ Features
+## Features
 
-- **Lossless Video Cutting**: Uses FFmpeg with stream copying for pixel-perfect cuts
-- **Large File Support**: Handle videos up to 10GB in size  
-- **Interactive Timeline**: Visual drag-and-drop interface for precise cut selection
-- **Multiple Formats**: Supports MP4, AVI, MOV, and MKV video files
-- **Single-Page Interface**: Clean, responsive web UI with real-time progress indication
-- **Docker Ready**: Fully containerized with docker-compose support
-- **Auto Cleanup**: Maintains only the last processed video to save storage
+- Lossless video cutting using FFmpeg stream copying
+- Support for files up to 10GB (MP4, AVI, MOV, MKV)
+- Interactive timeline for precise cut selection
+- Automatic file cleanup
+- Dockerized deployment
 
-## 🚀 Quick Start
+## Quick Start
 
-### With Docker (Recommended)
+### Development Mode
 
-1. **Clone the repository**
+1. Clone and configure:
    ```bash
    git clone https://github.com/kompound-ca/videocutter.git
    cd videocutter
+   cp .env.example .env
    ```
 
-2. **Start with Docker Compose**
+2. Set development mode in `.env`:
+   ```env
+   COMPOSE_PROFILES=development
+   ```
+
+3. Start:
    ```bash
    docker compose up -d --build
    ```
 
-3. **Access the application**
-   Open your browser and navigate to `http://localhost:8080`
+4. Access: `http://localhost:8080`
 
-### Without Docker (Local Development)
+### Production Mode
 
-**Prerequisites:**
-- Go 1.22 or later
-- FFmpeg and FFprobe installed and available in PATH
-
-1. **Install dependencies**
-   ```bash
-   go mod download
+1. Set production mode in `.env`:
+   ```env
+   COMPOSE_PROFILES=production
+   DOMAIN=your-domain.com
    ```
 
-2. **Create environment file**
+2. Start with SSL/nginx:
    ```bash
-   cp .env.example .env
+   docker compose --profile production up -d --build
    ```
 
-3. **Run the application**
-   ```bash
-   go run main.go
-   ```
+3. Access: `https://your-domain.com`
 
-## 🔧 Configuration
+## Configuration
 
-Create a `.env` file from `.env.example` and customize:
+Key variables in `.env`:
 
 ```env
-# Server Configuration
+COMPOSE_PROFILES=development  # or "production"
 PORT=8080
-
-# File Storage Configuration
-# HOST_UPLOAD_DIR specifies where uploaded files are stored on your host machine
-# when running with Docker. Examples:
-#   Windows: HOST_UPLOAD_DIR=C:\\Users\\your-username\\VideoUploads
-#   Linux/Mac: HOST_UPLOAD_DIR=/home/your-username/video-uploads
-#   Relative: HOST_UPLOAD_DIR=./uploads
-HOST_UPLOAD_DIR=./uploads
-
-# Optional: Logging Level
-LOG_LEVEL=info
+DOMAIN=videocutter.local
+HOST_UPLOAD_DIR=./temp
 ```
 
-## 📖 API Documentation
+## API Documentation
 
 ### Endpoints
 
@@ -144,42 +132,9 @@ Health check endpoint.
 }
 ```
 
-## 🎥 Usage Guide
 
-### Step-by-Step Process
 
-1. **Upload Video**
-   - Drag and drop a video file (MP4, AVI, MOV, MKV) onto the upload area
-   - Or click to browse and select a file
-   - Maximum file size: 10GB
-
-2. **Review Video Info**
-   - View automatically extracted metadata (duration, resolution, codecs, etc.)
-   - The timeline will initialize based on the video duration
-
-3. **Select Cut Range**
-   - Drag the green start marker to set the beginning of your cut
-   - Drag the orange end marker to set the end of your cut  
-   - Or click anywhere on the timeline to move the nearest marker
-   - Time inputs show precise start/end times and cut duration
-
-4. **Process Video**
-   - Click "Cut Video" to start processing
-   - Processing uses FFmpeg with lossless stream copying
-   - Processing time depends on video size and cut duration
-
-5. **Download Result**
-   - Download button appears when processing completes
-   - Click "Upload New Video" to start over with a different file
-
-### Tips for Best Results
-
-- **Lossless Cuts**: The app uses stream copying, so cuts are frame-accurate but may not be exactly at the requested time due to keyframe positions
-- **Large Files**: For very large files, ensure stable network connection during upload
-- **Precision**: Timeline provides visual guidance, but use the time inputs for precise values
-- **Cleanup**: Each new upload automatically removes previous files to save space
-
-## 🐳 Docker Commands
+## Docker Commands
 
 ### Development with auto-rebuild
 ```bash
@@ -205,51 +160,12 @@ docker compose -f docker-compose.yml up -d
 docker compose down && docker compose pull && docker compose up -d
 ```
 
-## 🏗️ Architecture
 
-### Backend (Go + Fiber)
-- **Fiber**: Fast HTTP framework with built-in middleware
-- **FFmpeg Integration**: Command-line execution for video processing  
-- **File Management**: Automatic cleanup and temporary storage
-- **Error Handling**: Comprehensive validation and error responses
 
-### Frontend (Vanilla JavaScript)
-- **Single-Page App**: Modern ES6+ JavaScript with no framework dependencies
-- **Interactive Timeline**: Custom drag-and-drop video timeline component
-- **Responsive Design**: Works on desktop, tablet, and mobile devices
-- **Real-time Feedback**: Upload progress and processing status updates
 
-### Container Architecture
-- **Multi-stage Build**: Optimized Docker image with separate build and runtime stages
-- **Alpine Base**: Small, secure base image with FFmpeg pre-installed
-- **Non-root User**: Security-focused container execution
-- **Health Checks**: Built-in container health monitoring
-- **Volume Mounting**: Persistent storage for temporary files
 
-## 🔒 Security Considerations
 
-- **File Validation**: Strict file type and size checking
-- **Non-root Execution**: Container runs as unprivileged user
-- **Input Sanitization**: All user inputs are validated and sanitized
-- **Temporary Storage**: Files are automatically cleaned up
-- **Resource Limits**: Memory and CPU constraints prevent resource exhaustion
 
-## 🚀 Production Deployment
-
-### Recommended Setup
-1. Use a reverse proxy (nginx) for HTTPS termination
-2. Set up proper log aggregation (e.g., ELK stack)
-3. Monitor resource usage and container health
-4. Configure backup strategy for important data
-5. Set up proper firewall rules
-
-### Environment Variables for Production
-```env
-PORT=8080
-# HOST_UPLOAD_DIR only affects Docker deployment
-HOST_UPLOAD_DIR=/var/lib/videocutter/uploads
-LOG_LEVEL=warn
-```
 
 ### Resource Requirements
 - **Minimum**: 512MB RAM, 1 CPU core, 10GB disk
@@ -264,17 +180,4 @@ This application uses FFmpeg, which is licensed under the [LGPL 2.1](https://www
 ### Application License
 Kompound VideoCutter is proprietary software owned by Kompound.ca.
 
-## 🤝 Contributing
 
-This is a private project for Kompound.ca. For issues or feature requests, please contact the development team.
-
-## 📞 Support
-
-For technical support or questions:
-- Create an issue in the repository
-- Contact: support@kompound.ca
-- Documentation: See this README and inline code comments
-
----
-
-**Built with ❤️ for Kompound.ca**

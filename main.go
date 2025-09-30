@@ -112,7 +112,20 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	// Check if running in development mode
+	isLocal := os.Getenv("COMPOSE_PROFILES") == "development"
+	domain := os.Getenv("DOMAIN")
+	if domain == "" {
+		domain = "videocutter.local" // fallback to default
+	}
+
+	if isLocal {
+		log.Printf("Running in DEVELOPMENT mode - direct access on port %s", port)
+		log.Printf("Access the application at: http://localhost:%s", port)
+	} else {
+		log.Printf("Running in PRODUCTION mode - server on port %s (behind nginx/SSL)", port)
+		log.Printf("Access the application at: https://%s", domain)
+	}
 	if err := app.Listen("0.0.0.0:" + port); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 	}
