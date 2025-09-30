@@ -56,11 +56,15 @@ func main() {
 
 	// JWT middleware for API protection
 	app.Use(middleware.JWTMiddleware(jwtService))
+	
+	// Add timing middleware for upload performance tracking
+	app.Use(middleware.TimingMiddleware())
 
 	// Initialize handlers
 	videoHandler := handlers.NewVideoHandler(videoService, fileService, cleanupService)
 	cleanupHandler := handlers.NewCleanupHandler(cleanupService)
 	sessionHandler := handlers.NewSessionHandler(jwtService)
+	timingHandler := handlers.NewTimingHandler()
 
 	// Static files
 	app.Static("/", "./static")
@@ -100,6 +104,11 @@ func main() {
 	api.Get("/cleanup/session/:session_id", cleanupHandler.GetSessionInfo)
 	api.Get("/cleanup/session/:session_id/time-remaining", cleanupHandler.GetSessionTimeRemaining)
 	api.Get("/cleanup/stats", cleanupHandler.GetStats)
+	
+	// Timing endpoints for performance analysis
+	api.Get("/timing/:upload_id/timeline", timingHandler.GetTimeline)
+	api.Get("/timing/:upload_id/summary", timingHandler.GetSummary)
+	api.Get("/timing/:upload_id/report", timingHandler.GetFormattedReport)
 	
 	// Health check
 	api.Get("/health", func(c *fiber.Ctx) error {

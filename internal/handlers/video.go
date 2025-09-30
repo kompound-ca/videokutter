@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/kompound-ca/videocutter/internal/middleware"
 	"github.com/kompound-ca/videocutter/internal/models"
 	"github.com/kompound-ca/videocutter/internal/services"
 )
@@ -123,6 +124,12 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 			Message: "Video file not found",
 		})
 	}
+	
+	// Log metadata extraction start
+	middleware.LogTimingEvent(c, "metadata_extraction_start", map[string]interface{}{
+		"filename": filename,
+		"file_path": filePath,
+	})
 
 	metadata, err := vh.videoService.GetVideoMetadata(filePath)
 	if err != nil {
@@ -131,6 +138,15 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 			Message: fmt.Sprintf("Failed to extract metadata: %v", err),
 		})
 	}
+	
+	// Log metadata extraction complete
+	middleware.LogTimingEvent(c, "metadata_extraction_complete", map[string]interface{}{
+		"filename": filename,
+		"duration_ns": metadata.Duration,
+		"resolution": metadata.Resolution,
+		"format": metadata.Format,
+		"video_codec": metadata.VideoCodec,
+	})
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -297,6 +313,12 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 			Message: "Access denied: You don't have permission to view this file",
 		})
 	}
+	
+	// Log preview request
+	middleware.LogTimingEvent(c, "preview_request", map[string]interface{}{
+		"filename": filename,
+		"user_id": userID,
+	})
 
 	// Log for debugging
 	fmt.Printf("Preview request for filename: %s by user: %s\n", filename, userID)
@@ -399,6 +421,11 @@ func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
 
 // InitUpload initializes a chunked upload session
 func (vh *VideoHandler) InitUpload(c *fiber.Ctx) error {
+	// Log upload initialization
+	middleware.LogTimingEvent(c, "upload_init_start", map[string]interface{}{
+		"endpoint": "init_upload",
+	})
+	
 	var req models.InitUploadRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
@@ -431,6 +458,15 @@ func (vh *VideoHandler) InitUpload(c *fiber.Ctx) error {
 			Message: fmt.Sprintf("Failed to initialize upload: %v", err),
 		})
 	}
+	
+	// Log upload session created
+	middleware.LogTimingEvent(c, "upload_session_created", map[string]interface{}{
+		"upload_id": session.ID,
+		"filename": req.Filename,
+		"file_size": req.FileSize,
+		"total_chunks": session.TotalChunks,
+		"chunk_size": session.ChunkSize,
+	})
 
 	response := models.InitUploadResponse{
 		UploadID:    session.ID,
@@ -449,6 +485,12 @@ func (vh *VideoHandler) InitUpload(c *fiber.Ctx) error {
 func (vh *VideoHandler) UploadChunk(c *fiber.Ctx) error {
 	uploadID := c.FormValue("upload_id")
 	chunkIndexStr := c.FormValue("chunk_index")
+	
+	// Log chunk upload start
+	middleware.LogTimingEvent(c, "chunk_upload_start", map[string]interface{}{
+		"upload_id": uploadID,
+		"chunk_index": chunkIndexStr,
+	})
 
 	if uploadID == "" || chunkIndexStr == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
@@ -505,6 +547,12 @@ func (vh *VideoHandler) UploadChunk(c *fiber.Ctx) error {
 			Message: fmt.Sprintf("Failed to save chunk: %v", err),
 		})
 	}
+	
+	// Log chunk uploaded
+	middleware.LogTimingEvent(c, "chunk_uploaded", map[string]interface{}{
+		"upload_id": uploadID,
+		"chunk_index": chunkIndex,
+	})
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -585,6 +633,12 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 		})
 	}
 
+	// Log assembly start
+	middleware.LogTimingEvent(c, "assembly_start", map[string]interface{}{
+		"upload_id": req.UploadID,
+		"total_size": session.TotalSize,
+	})
+	
 	// Assemble chunks into final file
 	finalPath, err := vh.fileService.AssembleChunks(req.UploadID)
 	if err != nil {
@@ -593,6 +647,12 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 			Message: fmt.Sprintf("Failed to assemble file: %v", err),
 		})
 	}
+	
+	// Log assembly complete
+	middleware.LogTimingEvent(c, "assembly_complete", map[string]interface{}{
+		"upload_id": req.UploadID,
+		"final_path": finalPath,
+	})
 
 	filename := filepath.Base(finalPath)
 
