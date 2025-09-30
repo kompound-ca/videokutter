@@ -90,8 +90,8 @@ class VideoCutterApp {
         // Button events
         this.cutButton.addEventListener('click', this.cutVideo.bind(this));
         this.downloadButton.addEventListener('click', this.downloadVideo.bind(this));
-        this.newVideoButton.addEventListener('click', this.resetApp.bind(this));
-        this.retryButton.addEventListener('click', this.resetApp.bind(this));
+        this.newVideoButton.addEventListener('click', async () => await this.resetApp());
+        this.retryButton.addEventListener('click', async () => await this.resetApp());
     }
 
     // JWT Session Management Methods
