@@ -22,7 +22,7 @@ go.work
 .env.local
 
 # Credentials
-clouflare.ini
+cloudflare.ini
 
 # Temporary files
 *.tmp
@@ -67,4 +67,5 @@ docker-compose.yml
 
 # Certs
 ssl/
-certbot-data/
+
+docs/

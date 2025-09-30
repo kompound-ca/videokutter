@@ -75,7 +75,7 @@ services:
       "
     restart: unless-stopped
 
-  # Certbot for SSL certificates with Cloudflare DNS (only in production mode)
+  # Certbot for SSL certificates with Cloudflare DNS and auto-renewal
   certbot:
     image: certbot/dns-cloudflare:latest
     container_name: videocutter-certbot
@@ -88,58 +88,10 @@ services:
       - ./ssl:/etc/letsencrypt
       - ./certbot-data:/var/www/certbot
       - ./cloudflare.ini:/etc/letsencrypt/cloudflare.ini:ro
-    command: >
-      sh -c "
-      echo 'Certbot DNS-Cloudflare: Obtaining/renewing certificate for ${DOMAIN}' &&
-      certbot certonly 
-        --dns-cloudflare
-        --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini
-        --email $${EMAIL}
-        --agree-tos
-        --no-eff-email
-        --non-interactive
-        --expand
-        --domains $${DOMAIN}
-        --cert-name $${DOMAIN} &&
-      echo 'Initial certificate process completed'
-      "
-    restart: "no"
-
-  # Automatic certificate renewer (runs every 12 hours)
-  certbot-renewer:
-    image: certbot/dns-cloudflare:latest
-    container_name: videocutter-certbot-renewer
-    profiles:
-      - production  # Only start with --profile production
-    environment:
-      - DOMAIN=${DOMAIN:-videocutter.local}
-      - EMAIL=${SSL_EMAIL:-admin@${DOMAIN:-videocutter.local}}
-    volumes:
-      - ./ssl:/etc/letsencrypt
-      - ./certbot-data:/var/www/certbot
-      - ./cloudflare.ini:/etc/letsencrypt/cloudflare.ini:ro
       - /var/run/docker.sock:/var/run/docker.sock
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      'echo "Starting certbot auto-renewer for ${DOMAIN}" &&
-       echo "Renewer will check every 12 hours and reload nginx if renewed" &&
-       while :; do
-         echo "$(date): Checking certificate renewal for ${DOMAIN}..." &&
-         if certbot renew 
-             --dns-cloudflare
-             --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini
-             --quiet
-             --no-random-sleep-on-renew
-             --deploy-hook "echo Certificate renewed, reloading nginx..."; then
-           echo "$(date): Certificate check completed successfully" &&
-           # Send HUP signal to nginx container to reload certificates
-           docker kill -s HUP videocutter-nginx-lb 2>/dev/null || echo "Nginx container not found or already reloaded" 
-         else
-           echo "$(date): Certificate renewal check failed or not needed"
-         fi &&
-         echo "$(date): Sleeping for 12 hours..." &&
-         sleep 43200
-       done'
+      - ./certbot-data/certbot-renewer.sh:/usr/local/bin/certbot-renewer.sh:ro
+    entrypoint: ["/bin/sh"]
+    command: ["/usr/local/bin/certbot-renewer.sh"]
     restart: unless-stopped
     depends_on:
       - nginx-lb
