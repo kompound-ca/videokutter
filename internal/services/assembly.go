@@ -56,6 +56,17 @@ func NewAssemblyService(tempDir, chunksDir string) *AssemblyService {
 
 // AssembleChunksOptimized performs optimized assembly with pre-allocation and hashing
 func (as *AssemblyService) AssembleChunksOptimized(session *models.UploadSession) (string, error) {
+	// For files < 500MB, use memory-based assembly for better performance
+	if session.TotalSize < 500*1024*1024 {
+		return as.assembleInMemory(session)
+	}
+
+	// Use disk-based assembly for larger files
+	return as.assembleOnDisk(session)
+}
+
+// assembleInMemory performs in-memory assembly for smaller files
+func (as *AssemblyService) assembleInMemory(session *models.UploadSession) (string, error) {
 	uploadID := session.ID
 
 	// Acquire semaphore slot for concurrency control
@@ -80,6 +91,71 @@ func (as *AssemblyService) AssembleChunksOptimized(session *models.UploadSession
 		as.mutex.Unlock()
 	}()
 
+	// Allocate memory buffer for entire file
+	buffer := make([]byte, session.TotalSize)
+	var totalBytesRead int64
+
+	// Read all chunks into memory buffer
+	for i := 0; i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(as.chunksDir, uploadID, fmt.Sprintf("chunk_%d", i))
+		
+		// Calculate offset for this chunk
+		offset := int64(i) * session.ChunkSize
+
+		// Read chunk directly into buffer at correct offset
+		bytesRead, err := as.readChunkToBuffer(buffer[offset:], chunkPath, job.Hash)
+		if err != nil {
+			job.Error = err
+			return "", fmt.Errorf("failed to read chunk %d: %w", i, err)
+		}
+
+		totalBytesRead += bytesRead
+		job.Progress = float64(i+1) / float64(session.TotalChunks)
+	}
+
+	// Verify total size
+	if totalBytesRead != session.TotalSize {
+		job.Error = fmt.Errorf("size mismatch: expected %d, got %d", session.TotalSize, totalBytesRead)
+		return "", job.Error
+	}
+
+	// Write entire buffer to final file in one operation
+	finalPath := filepath.Join(as.tempDir, session.Filename)
+	job.FinalPath = finalPath
+
+	if err := as.writeBufferToFile(buffer, finalPath); err != nil {
+		job.Error = err
+		return "", fmt.Errorf("failed to write final file: %w", err)
+	}
+
+	job.Completed = true
+	return finalPath, nil
+}
+
+// assembleOnDisk performs traditional disk-based assembly for larger files
+func (as *AssemblyService) assembleOnDisk(session *models.UploadSession) (string, error) {
+	// Acquire semaphore slot for concurrency control
+	as.semaphore <- struct{}{}
+	defer func() { <-as.semaphore }()
+
+	// Track this assembly job
+	job := &AssemblyJob{
+		UploadID:  session.ID,
+		Session:   session,
+		StartTime: time.Now(),
+		Hash:      sha256.New(),
+	}
+
+	as.mutex.Lock()
+	as.activeJobs[session.ID] = job
+	as.mutex.Unlock()
+
+	defer func() {
+		as.mutex.Lock()
+		delete(as.activeJobs, session.ID)
+		as.mutex.Unlock()
+	}()
+
 	// Generate final path
 	finalPath := filepath.Join(as.tempDir, session.Filename)
 	job.FinalPath = finalPath
@@ -101,7 +177,7 @@ func (as *AssemblyService) AssembleChunksOptimized(session *models.UploadSession
 	// Assemble chunks by writing directly to their offsets
 	var totalBytesWritten int64
 	for i := 0; i < session.TotalChunks; i++ {
-		chunkPath := filepath.Join(as.chunksDir, uploadID, fmt.Sprintf("chunk_%d", i))
+		chunkPath := filepath.Join(as.chunksDir, session.ID, fmt.Sprintf("chunk_%d", i))
 		
 		// Calculate offset for this chunk
 		offset := int64(i) * session.ChunkSize
@@ -244,6 +320,55 @@ func (as *AssemblyService) copyFile(src, dst string) error {
 	}
 
 	return destFile.Sync()
+}
+
+// readChunkToBuffer reads a chunk file directly into a memory buffer
+func (as *AssemblyService) readChunkToBuffer(buffer []byte, chunkPath string, hasher hash.Hash) (int64, error) {
+	chunkFile, err := os.Open(chunkPath)
+	if err != nil {
+		return 0, err
+	}
+	defer chunkFile.Close()
+
+	// Read chunk data into buffer
+	n, err := io.ReadFull(chunkFile, buffer[:cap(buffer)])
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return 0, fmt.Errorf("failed to read chunk: %w", err)
+	}
+
+	// Update hash
+	if _, hashErr := hasher.Write(buffer[:n]); hashErr != nil {
+		return 0, fmt.Errorf("failed to update hash: %w", hashErr)
+	}
+
+	return int64(n), nil
+}
+
+// writeBufferToFile writes a memory buffer to a file in one operation
+func (as *AssemblyService) writeBufferToFile(buffer []byte, filePath string) error {
+	// Create file with optimized flags
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	// Write entire buffer in one operation
+	n, err := file.Write(buffer)
+	if err != nil {
+		return fmt.Errorf("failed to write buffer: %w", err)
+	}
+
+	if n != len(buffer) {
+		return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", n, len(buffer))
+	}
+
+	// Ensure data is written to disk
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file: %w", err)
+	}
+
+	return nil
 }
 
 // GetFileHash returns the SHA256 hash of an assembled file

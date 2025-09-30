@@ -144,15 +144,24 @@ func (ops *OptimizedPreviewService) generatePreviewAsync(originalFilename, fileP
 	
 	ops.updatePreviewStatus(originalFilename, PreviewStatusGenerating, 25, "")
 
-	// Build FFmpeg command with progress tracking
+	// Build FFmpeg command with resource limits and progress tracking
 	cmd := exec.Command("ffmpeg",
 		"-i", filePath,
+		// Resource limiting
+		"-threads", "2", // Limit to 2 threads to prevent CPU spikes
+		"-max_muxing_queue_size", "1024", // Prevent memory buildup
+		"-avoid_negative_ts", "make_zero", // Handle timestamp issues
+		// Video encoding
 		"-c:v", encodingProfile.VideoCodec,
 		"-preset", encodingProfile.Preset,
 		"-crf", encodingProfile.CRF,
 		"-vf", encodingProfile.VideoFilter,
+		// Audio encoding
 		"-c:a", encodingProfile.AudioCodec,
 		"-b:a", encodingProfile.AudioBitrate,
+		"-ac", "2", // Stereo output
+		"-ar", "44100", // Standard sample rate
+		// Output optimization
 		"-movflags", "+faststart", // Enable web streaming
 		"-f", "mp4",
 		"-y", // Overwrite output

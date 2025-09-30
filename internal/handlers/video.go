@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -354,7 +355,7 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 		
 		fmt.Printf("Serving optimized preview for: %s\n", filename)
 		
-		// Set headers for optimized preview
+		// Serve optimized preview
 		c.Set("Content-Type", "video/mp4")
 		c.Set("Accept-Ranges", "bytes")
 		c.Set("Cache-Control", "public, max-age=3600")
@@ -375,33 +376,13 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	}
 
 	// Set appropriate headers for video streaming
-	ext := filepath.Ext(filename)
-	var contentType string
-	switch ext {
-	case ".mp4":
-		contentType = "video/mp4"
-	case ".avi":
-		contentType = "video/x-msvideo"
-	case ".mov":
-		contentType = "video/quicktime"
-	case ".mkv":
-		contentType = "video/x-matroska"
-	case ".webm":
-		contentType = "video/webm"
-	case ".m4v":
-		contentType = "video/mp4"
-	default:
-		contentType = "application/octet-stream"
-	}
-
-	c.Set("Content-Type", contentType)
 	c.Set("Accept-Ranges", "bytes") // Enable seeking
 	c.Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 	c.Set("X-Content-Type-Options", "nosniff")
 	c.Set("Connection", "keep-alive")
 	
-	// Add headers to improve streaming performance
-	if contentType == "video/mp4" {
+	// Add headers to improve streaming performance for MP4
+	if strings.HasSuffix(strings.ToLower(filename), ".mp4") {
 		c.Set("Content-Disposition", "inline") // Encourage inline playback
 	}
 
@@ -480,8 +461,17 @@ func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate preview filename
-	previewFilename, err := vh.videoService.GeneratePreview(inputPath, filename)
+	// Get metadata for preview generation
+	metadata, err := vh.videoService.GetVideoMetadata(inputPath)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to get metadata: %v", err),
+		})
+	}
+
+	// Request preview generation through optimized service
+	previewInfo, err := vh.previewService.RequestPreview(filename, inputPath, metadata)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false,
@@ -491,10 +481,8 @@ func (vh *VideoHandler) GeneratePreview(c *fiber.Ctx) error {
 
 	return c.JSON(models.APIResponse{
 		Success: true,
-		Message: "Preview generated successfully",
-		Data: map[string]string{
-			"preview_filename": previewFilename,
-		},
+		Message: "Preview generation requested",
+		Data: previewInfo,
 	})
 }
 
