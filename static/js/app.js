@@ -333,9 +333,9 @@ class VideoCutterApp {
         }
     }
 
-    // Upload chunks in parallel with resume capability
+    // Upload chunks in parallel with resume capability (optimized for Azure VM)
     async uploadChunksParallel(file, uploadID, chunkSize, totalChunks) {
-        const maxParallelUploads = 3;
+        const maxParallelUploads = 4; // Reduced from 3 to balance speed vs server load
         const uploadedChunks = new Set();
         let uploadedCount = 0;
         

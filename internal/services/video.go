@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,8 +13,9 @@ import (
 )
 
 type VideoService struct {
-	tempDir     string
+	tempDir        string
 	ffprobeService *FFprobeService
+	processManager *ProcessManager
 }
 
 func NewVideoService() *VideoService {
@@ -28,6 +30,7 @@ func NewVideoService() *VideoService {
 	return &VideoService{
 		tempDir:        tempDir,
 		ffprobeService: NewFFprobeService(),
+		processManager: NewProcessManager(),
 	}
 }
 
@@ -83,10 +86,11 @@ func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime,
 	fmt.Printf("Starting video cut: %s -> %s (start: %s, duration: %s)\n", 
 		filepath.Base(inputPath), filepath.Base(outputPath), startTimeStr, durationStr)
 
-	// Use optimized ffmpeg command for fastest stream copy
+	// Use optimized ffmpeg command for fastest stream copy with resource limits
 	cmd := exec.Command("ffmpeg",
 		"-hide_banner",           // Reduce output verbosity
 		"-loglevel", "warning",   // Only show warnings and errors
+		"-threads", "2",          // Limit threads for 2 vCPU Azure VM
 		"-ss", startTimeStr,      // Seek before input (faster)
 		"-i", inputPath,
 		"-t", durationStr,        // Duration to copy
@@ -98,19 +102,15 @@ func (vs *VideoService) CutVideo(inputPath string, outputPath string, startTime,
 		"-y",                    // Overwrite output file
 		outputPath)
 
-	// Set up progress monitoring
-	start := time.Now()
-
-	// Run command and capture output
-	output, err := cmd.CombinedOutput()
-	elapsed := time.Since(start)
-
+	// Use process manager to control concurrency and resource usage
+	ctx := context.Background()
+	
+	// Stream copy is a light operation
+	err := vs.processManager.ExecuteLightOperation(ctx, cmd, fmt.Sprintf("cut_%s", filepath.Base(outputPath)))
 	if err != nil {
-		fmt.Printf("FFmpeg error after %v: %s\n", elapsed, string(output))
-		return fmt.Errorf("ffmpeg failed: %w, stderr: %s", err, string(output))
+		return fmt.Errorf("video cutting failed: %w", err)
 	}
 
-	fmt.Printf("Video cut completed in %v\n", elapsed)
 	return nil
 }
 
@@ -131,6 +131,11 @@ func (vs *VideoService) ValidateVideoFormat(filename string) bool {
 // GetTempDir returns the temporary directory path
 func (vs *VideoService) GetTempDir() string {
 	return vs.tempDir
+}
+
+// GetProcessManager returns the process manager instance
+func (vs *VideoService) GetProcessManager() *ProcessManager {
+	return vs.processManager
 }
 
 

@@ -69,6 +69,7 @@ func main() {
 	cleanupHandler := handlers.NewCleanupHandler(cleanupService)
 	sessionHandler := handlers.NewSessionHandler(jwtService)
 	timingHandler := handlers.NewTimingHandler()
+	systemHandler := handlers.NewSystemHandler(videoService.GetProcessManager())
 
 	// Static files
 	app.Static("/", "./static")
@@ -115,10 +116,10 @@ func main() {
 	api.Get("/timing/:upload_id/summary", timingHandler.GetSummary)
 	api.Get("/timing/:upload_id/report", timingHandler.GetFormattedReport)
 	
-	// Health check
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
+	// System monitoring endpoints
+	api.Get("/health", systemHandler.GetHealthCheck)
+	api.Get("/system/stats", systemHandler.GetSystemStats)
+	api.Get("/system/processes", systemHandler.GetProcessList)
 
 	// Graceful shutdown
 	c := make(chan os.Signal, 1)
@@ -127,6 +128,9 @@ func main() {
 	go func() {
 		<-c
 		log.Println("Gracefully shutting down...")
+		log.Println("Stopping active FFmpeg processes...")
+		videoService.GetProcessManager().KillAllProcesses()
+		log.Println("Stopping cleanup service...")
 		cleanupService.Stop()
 		_ = app.Shutdown()
 	}()
