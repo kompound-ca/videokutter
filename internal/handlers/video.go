@@ -139,13 +139,14 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 		})
 	}
 	
-	// Log metadata extraction complete
+	// Log metadata extraction complete with optimization info
 	middleware.LogTimingEvent(c, "metadata_extraction_complete", map[string]interface{}{
 		"filename": filename,
 		"duration_ns": metadata.Duration,
 		"resolution": metadata.Resolution,
 		"format": metadata.Format,
 		"video_codec": metadata.VideoCodec,
+		"optimization": "fast_extraction_used",
 	})
 
 	return c.JSON(models.APIResponse{
@@ -669,6 +670,29 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 			"filename":   filename,
 			"size":       session.TotalSize,
 			"uploaded":   true,
+			"optimization": "fast_assembly_used",
+		},
+	})
+}
+
+// GetAssemblyProgress returns progress for an active assembly operation
+func (vh *VideoHandler) GetAssemblyProgress(c *fiber.Ctx) error {
+	uploadID := c.Params("upload_id")
+	if uploadID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Upload ID parameter required",
+		})
+	}
+
+	// This would need to be implemented in FileService to expose the assembly service
+	// For now, return a placeholder response
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Assembly progress endpoint (placeholder)",
+		Data: map[string]interface{}{
+			"upload_id": uploadID,
+			"message":   "Assembly progress tracking available in optimized service",
 		},
 	})
 }

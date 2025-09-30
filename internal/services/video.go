@@ -1,13 +1,11 @@
 package services
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +14,8 @@ import (
 )
 
 type VideoService struct {
-	tempDir string
+	tempDir     string
+	ffprobeService *FFprobeService
 }
 
 func NewVideoService() *VideoService {
@@ -29,7 +28,8 @@ func NewVideoService() *VideoService {
 	os.MkdirAll(tempDir, 0755)
 
 	return &VideoService{
-		tempDir: tempDir,
+		tempDir:        tempDir,
+		ffprobeService: NewFFprobeService(),
 	}
 }
 
@@ -55,68 +55,19 @@ type FFProbeOutput struct {
 	} `json:"format"`
 }
 
-// GetVideoMetadata extracts metadata from video using ffprobe
+// GetVideoMetadata extracts metadata from video using optimized ffprobe
 func (vs *VideoService) GetVideoMetadata(filePath string) (*models.VideoMetadata, error) {
-	cmd := exec.Command("ffprobe",
-		"-v", "quiet",
-		"-print_format", "json",
-		"-show_format",
-		"-show_streams",
-		filePath)
-
-	output, err := cmd.Output()
+	// Try fast metadata extraction first
+	metadata, err := vs.ffprobeService.FastMetadataExtraction(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run ffprobe: %w", err)
-	}
-
-	var probe FFProbeOutput
-	if err := json.Unmarshal(output, &probe); err != nil {
-		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
-	}
-
-	// Parse duration
-	durationFloat, err := strconv.ParseFloat(probe.Format.Duration, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse duration: %w", err)
-	}
-	duration := time.Duration(durationFloat * float64(time.Second))
-
-	// Parse size
-	size, err := strconv.ParseInt(probe.Format.Size, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse file size: %w", err)
-	}
-
-	// Find video and audio streams
-	var videoCodec, audioCodec, resolution, frameRate string
-	for _, stream := range probe.Streams {
-		if stream.CodecType == "video" {
-			videoCodec = stream.CodecName
-			if stream.Width > 0 && stream.Height > 0 {
-				resolution = fmt.Sprintf("%dx%d", stream.Width, stream.Height)
-			}
-			if stream.RFrameRate != "" {
-				frameRate = stream.RFrameRate
-			}
-		} else if stream.CodecType == "audio" && audioCodec == "" {
-			audioCodec = stream.CodecName
+		// Fall back to standard extraction if fast method fails
+		metadata, err = vs.ffprobeService.StandardMetadataExtraction(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract metadata: %w", err)
 		}
 	}
 
-	filename := filepath.Base(filePath)
-	
-	return &models.VideoMetadata{
-		Filename:    filename,
-		Duration:    duration,
-		Format:      probe.Format.FormatName,
-		Resolution:  resolution,
-		Size:        size,
-		Bitrate:     probe.Format.BitRate,
-		FrameRate:   frameRate,
-		AudioCodec:  audioCodec,
-		VideoCodec:  videoCodec,
-		UploadedAt:  time.Now(),
-	}, nil
+	return metadata, nil
 }
 
 // CutVideo performs lossless video cutting using ffmpeg

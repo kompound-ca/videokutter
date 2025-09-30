@@ -22,6 +22,8 @@ type FileService struct {
 	sessions      map[string]*models.UploadSession
 	sessionsMutex sync.RWMutex
 	defaultChunkSize int64
+	// Optimized assembly service
+	assemblyService *AssemblyService
 }
 
 func NewFileService() *FileService {
@@ -35,12 +37,16 @@ func NewFileService() *FileService {
 	os.MkdirAll(tempDir, 0755)
 	os.MkdirAll(chunksDir, 0755)
 
+	// Initialize optimized assembly service
+	assemblyService := NewAssemblyService(tempDir, chunksDir)
+
 	return &FileService{
 		tempDir:          tempDir,
 		maxFileSize:      10 * 1024 * 1024 * 1024, // 10GB
 		chunksDir:        chunksDir,
 		sessions:         make(map[string]*models.UploadSession),
 		defaultChunkSize: 5 * 1024 * 1024, // 5MB chunks
+		assemblyService:  assemblyService,
 	}
 }
 
@@ -303,7 +309,7 @@ func (fs *FileService) GetMissingChunks(uploadID string) ([]int, error) {
 	return missing, nil
 }
 
-// AssembleChunks combines all chunks into the final file
+// AssembleChunks combines all chunks into the final file using optimized assembly
 func (fs *FileService) AssembleChunks(uploadID string) (string, error) {
 	session, err := fs.GetUploadSession(uploadID)
 	if err != nil {
@@ -315,30 +321,13 @@ func (fs *FileService) AssembleChunks(uploadID string) (string, error) {
 		return "", fmt.Errorf("not all chunks uploaded: %d/%d", len(session.UploadedChunks), session.TotalChunks)
 	}
 
-	// Create final file
-	finalPath := filepath.Join(fs.tempDir, session.Filename)
-	finalFile, err := os.Create(finalPath)
+	// Use optimized assembly service
+	finalPath, err := fs.assemblyService.AssembleChunksOptimized(session)
 	if err != nil {
-		return "", fmt.Errorf("failed to create final file: %w", err)
-	}
-	defer finalFile.Close()
-
-	// Assemble chunks in order
-	for i := 0; i < session.TotalChunks; i++ {
-		chunkPath := filepath.Join(fs.chunksDir, uploadID, fmt.Sprintf("chunk_%d", i))
-		chunkFile, err := os.Open(chunkPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to open chunk %d: %w", i, err)
-		}
-
-		_, err = io.Copy(finalFile, chunkFile)
-		chunkFile.Close()
-		if err != nil {
-			return "", fmt.Errorf("failed to copy chunk %d: %w", i, err)
-		}
+		return "", fmt.Errorf("optimized assembly failed: %w", err)
 	}
 
-	// Cleanup session
+	// Cleanup session after successful assembly
 	fs.CleanupSession(uploadID)
 
 	return finalPath, nil
