@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -128,11 +129,8 @@ func (fps *FFprobeService) parseMetadata(probe FFProbeOutput, filePath string) (
 		}
 	}
 
-	filename := filePath
-	if len(filePath) > 100 {
-		// Use just filename if path is too long
-		filename = filePath[len(filePath)-100:]
-	}
+	// Extract only the base filename without path
+	filename := filepath.Base(filePath)
 
 	return &models.VideoMetadata{
 		Filename:    filename,
