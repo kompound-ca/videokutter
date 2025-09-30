@@ -9,15 +9,12 @@
     <!-- Apply preload class ASAP to avoid FOUC and disable transitions until CSS is ready -->
     <script>document.documentElement.classList.add('preload');</script>
 
+    <!-- Load critical CSS first to prevent FOUC -->
+    <link rel="stylesheet" href="css/style.css">
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-
-    <!-- Preload stylesheet to minimize FOUC; swap rel on load -->
-    <link rel="preload" href="css/style.css" as="style" onload="this.onload=null;this.rel='stylesheet';this.media='all'">
-    <!-- Fallback for browsers that don't support preload -->
-    <link rel="stylesheet" href="css/style.css" media="print" onload="this.media='all'">
-    <noscript><link rel="stylesheet" href="css/style.css"></noscript>
 </head>
 <body>
     <div class="container">

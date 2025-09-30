@@ -1,14 +1,8 @@
 // Video Cutter App
 class VideoCutterApp {
     constructor() {
-        // Remove preload class ASAP to reveal content once DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                document.documentElement.classList.remove('preload');
-            });
-        } else {
-            document.documentElement.classList.remove('preload');
-        }
+        // Remove preload class after fonts are loaded to prevent FOUC
+        this.initializePreloadRemoval();
 
         this.currentMetadata = null;
         this.isDragging = false;
@@ -1386,6 +1380,42 @@ class VideoCutterApp {
         }
     }
     
+    initializePreloadRemoval() {
+        // Wait for fonts and DOM to be ready before showing content
+        const removePreload = () => {
+            document.documentElement.classList.remove('preload');
+        };
+        
+        if (document.fonts && document.fonts.ready) {
+            // Modern browsers: wait for fonts to load
+            Promise.all([
+                document.fonts.ready,
+                new Promise(resolve => {
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', resolve);
+                    } else {
+                        resolve();
+                    }
+                })
+            ]).then(() => {
+                // Small delay to ensure styles are applied
+                setTimeout(removePreload, 50);
+            }).catch(() => {
+                // Fallback: remove after a short delay
+                setTimeout(removePreload, 200);
+            });
+        } else {
+            // Fallback for older browsers
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    setTimeout(removePreload, 100);
+                });
+            } else {
+                setTimeout(removePreload, 100);
+            }
+        }
+    }
+
     deferredInitialization() {
         // Wait for CSS to load before showing content to avoid FOUC
         if (document.readyState === 'loading') {

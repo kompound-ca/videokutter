@@ -10,8 +10,10 @@ html.preload *,
 html.preload *::before,
 html.preload *::after {
     transition: none !important;
+    animation: none !important;
 }
 html.preload body {
+    visibility: hidden;
     opacity: 0;
 }
 
