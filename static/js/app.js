@@ -1,6 +1,15 @@
 // Video Cutter App
 class VideoCutterApp {
     constructor() {
+        // Remove preload class ASAP to reveal content once DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.documentElement.classList.remove('preload');
+            });
+        } else {
+            document.documentElement.classList.remove('preload');
+        }
+
         this.currentMetadata = null;
         this.isDragging = false;
         this.dragTarget = null;
@@ -29,8 +38,7 @@ class VideoCutterApp {
         
         this.initializeElements();
         this.bindEvents();
-        this.showInitializing();
-        this.initializeSession();
+        this.deferredInitialization();
     }
 
     initializeElements() {
@@ -1051,13 +1059,19 @@ class VideoCutterApp {
             return;
         }
         
+        // Defer layout work until the element has a measurable width to avoid forced layout before CSS loads
+        const timelineWidth = this.timeline.clientWidth;
+        if (!timelineWidth || timelineWidth === 0) {
+            requestAnimationFrame(() => this.updateTimelineMarkers());
+            return;
+        }
+        
         const startPercentage = Math.max(0, Math.min(100, (this.startTime / this.timelineDuration) * 100));
         const endPercentage = Math.max(0, Math.min(100, (this.endTime / this.timelineDuration) * 100));
         
         console.log(`Timeline update: start=${this.startTime}s (${startPercentage.toFixed(1)}%), end=${this.endTime}s (${endPercentage.toFixed(1)}%), duration=${this.timelineDuration}s`);
         
         // Get timeline dimensions with proper calculations
-        const timelineWidth = this.timeline.clientWidth;
         const markerWidth = 20; // matches CSS
         const trackPadding = 10; // CSS padding on timeline track
         
@@ -1372,6 +1386,22 @@ class VideoCutterApp {
         }
     }
     
+    deferredInitialization() {
+        // Wait for CSS to load before showing content to avoid FOUC
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                requestAnimationFrame(() => this.initializeAfterLoad());
+            });
+        } else {
+            requestAnimationFrame(() => this.initializeAfterLoad());
+        }
+    }
+    
+    initializeAfterLoad() {
+        this.showInitializing();
+        this.initializeSession();
+    }
+
     showInitializing() {
         // Add a temporary initializing message to upload section
         const uploadSection = this.sections.upload;

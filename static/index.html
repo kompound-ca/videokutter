@@ -5,10 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lossless Video Cutter</title>
     <link rel="icon" type="image/svg+xml" href="icon/kompound.svg">
+
+    <!-- Apply preload class ASAP to avoid FOUC and disable transitions until CSS is ready -->
+    <script>document.documentElement.classList.add('preload');</script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Preload stylesheet to minimize FOUC; swap rel on load -->
+    <link rel="preload" href="css/style.css" as="style" onload="this.onload=null;this.rel='stylesheet';this.media='all'">
+    <!-- Fallback for browsers that don't support preload -->
+    <link rel="stylesheet" href="css/style.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="css/style.css"></noscript>
 </head>
 <body>
     <div class="container">
@@ -129,6 +138,6 @@
         <p>&copy; 2025 Kompound - Video Cutting Tool</p>
     </footer>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js" defer></script>
 </body>
 </html>

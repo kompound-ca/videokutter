@@ -5,12 +5,23 @@
     box-sizing: border-box;
 }
 
+/* During early load, disable transitions and hide content to avoid FOUC */
+html.preload *,
+html.preload *::before,
+html.preload *::after {
+    transition: none !important;
+}
+html.preload body {
+    opacity: 0;
+}
+
 body {
     font-family: 'JetBrains Mono', monospace;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     color: #333;
     line-height: 1.6;
+    transition: opacity 150ms ease;
 }
 
 .container {
@@ -198,6 +209,22 @@ header p {
 
 .video-fallback.error {
     border-color: #fed7d7;
+}
+
+/* Spinner animation for loading states */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e2e8f0;
+    border-radius: 50%;
+    border-top-color: #667eea;
+    animation: spin 1s ease-in-out infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
     background: #fef2f2;
 }
 
