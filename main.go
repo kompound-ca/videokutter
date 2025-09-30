@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/kompound-ca/videocutter/internal/handlers"
+	"github.com/kompound-ca/videocutter/internal/middleware"
 	"github.com/kompound-ca/videocutter/internal/services"
 )
 
@@ -20,6 +21,7 @@ func main() {
 	videoService := services.NewVideoService()
 	fileService := services.NewFileService()
 	cleanupService := services.NewCleanupService(fileService)
+	jwtService := services.NewJWTService()
 	
 	// Perform startup cleanup to remove any leftover files from previous container runs
 	// This is crucial since user sessions are lost during container restarts
@@ -52,9 +54,13 @@ func main() {
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	}))
 
+	// JWT middleware for API protection
+	app.Use(middleware.JWTMiddleware(jwtService))
+
 	// Initialize handlers
 	videoHandler := handlers.NewVideoHandler(videoService, fileService, cleanupService)
 	cleanupHandler := handlers.NewCleanupHandler(cleanupService)
+	sessionHandler := handlers.NewSessionHandler(jwtService)
 
 	// Static files
 	app.Static("/", "./static")
@@ -66,6 +72,11 @@ func main() {
 
 	// API routes
 	api := app.Group("/api")
+	
+	// Session management endpoints (JWT)
+	api.Post("/session/init", sessionHandler.InitSession)
+	api.Post("/session/refresh", sessionHandler.RefreshSession)
+	api.Get("/session/info", sessionHandler.GetSessionInfo)
 	
 	// Legacy single upload (kept for compatibility)
 	api.Post("/upload", videoHandler.Upload)

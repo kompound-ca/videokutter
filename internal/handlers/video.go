@@ -78,7 +78,7 @@ func (vh *VideoHandler) Upload(c *fiber.Ctx) error {
 
 	// Create cleanup session for file management with automatic cleanup of previous sessions
 	sessionID := uuid.New().String()
-	userID := c.IP() // Use IP address as simple user identifier for session management
+	userID := c.Locals("userID").(string) // Use JWT user ID for session management
 	vh.cleanupService.CreateSessionForUser(sessionID, filename, userID)
 
 	// Return success immediately with basic info
@@ -188,10 +188,11 @@ func (vh *VideoHandler) Cut(c *fiber.Ctx) error {
 	}
 
 	// Update cleanup session with processed file
-	sessionID := c.Query("session_id")
-	if sessionID != "" {
-		vh.cleanupService.SetProcessedFile(sessionID, outputFilename)
-	}
+	// Get user ID from JWT to find their active session
+	userID := c.Locals("userID").(string)
+	
+	// Find and update the user's active session with the processed file
+	vh.cleanupService.SetProcessedFileForUser(userID, outputFilename)
 
 	// Return success response
 	cutResponse := models.CutResponse{
@@ -223,6 +224,17 @@ func (vh *VideoHandler) Download(c *fiber.Ctx) error {
 		decodedFilename = filename // fallback to original if decoding fails
 	}
 	filename = decodedFilename
+
+	// Get user ID from JWT middleware for file ownership validation
+	userID := c.Locals("userID").(string)
+
+	// Validate that the user owns this file by checking if they have a session with this file
+	if !vh.cleanupService.UserOwnsFile(userID, filename) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+			Success: false,
+			Message: "Access denied: You don't have permission to download this file",
+		})
+	}
 
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
@@ -273,10 +285,21 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	if err != nil {
 		decodedFilename = filename // fallback to original if decoding fails
 	}
+	filename = decodedFilename
+
+	// Get user ID from JWT middleware for file ownership validation
+	userID := c.Locals("userID").(string)
+
+	// Validate that the user owns this file by checking if they have a session with this file
+	if !vh.cleanupService.UserOwnsFile(userID, filename) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+			Success: false,
+			Message: "Access denied: You don't have permission to view this file",
+		})
+	}
 
 	// Log for debugging
-	fmt.Printf("Preview request for filename: %s (decoded: %s)\n", filename, decodedFilename)
-	filename = decodedFilename
+	fmt.Printf("Preview request for filename: %s by user: %s\n", filename, userID)
 
 	// Serve original video with optimization headers for browser
 	filePath := vh.fileService.GetFilePath(filename)
@@ -575,7 +598,7 @@ func (vh *VideoHandler) CompleteUpload(c *fiber.Ctx) error {
 
 	// Create cleanup session for chunked upload with automatic cleanup of previous sessions
 	sessionID := uuid.New().String()
-	userID := c.IP() // Use IP address as simple user identifier for session management
+	userID := c.Locals("userID").(string) // Use JWT user ID for session management
 	vh.cleanupService.CreateSessionForUser(sessionID, filename, userID)
 
 	return c.JSON(models.APIResponse{

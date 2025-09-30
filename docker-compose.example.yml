@@ -19,6 +19,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10737418240}
       - DOMAIN=${DOMAIN:-videocutter.local}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - "${HOST_UPLOAD_DIR:-./temp}:/app/temp"
     init: true

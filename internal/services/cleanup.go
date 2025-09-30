@@ -248,6 +248,22 @@ func (cs *CleanupService) SetProcessedFile(sessionID, processedFile string) {
 	}
 }
 
+// SetProcessedFileForUser sets the processed file for a user's active session
+func (cs *CleanupService) SetProcessedFileForUser(userID, processedFile string) {
+	cs.sessionsMutex.Lock()
+	defer cs.sessionsMutex.Unlock()
+	
+	// Find the user's active session
+	if sessionID, exists := cs.userSessions[userID]; exists {
+		if session, sessionExists := cs.sessions[sessionID]; sessionExists {
+			session.ProcessedFile = processedFile
+			session.IsDownloadReady = true
+			session.ProcessedAt = time.Now() // Record when video was processed/cut
+			session.LastAccessTime = time.Now() // Keep for API compatibility
+		}
+	}
+}
+
 // RecordDownload increments download count for a session
 func (cs *CleanupService) RecordDownload(sessionID string) {
 	cs.sessionsMutex.Lock()
@@ -482,6 +498,33 @@ func (cs *CleanupService) GetSessionStats() map[string]interface{} {
 	stats["download_ready_sessions"] = downloadReady
 	
 	return stats
+}
+
+// UserOwnsFile checks if a user owns a specific file (uploaded or processed)
+func (cs *CleanupService) UserOwnsFile(userID, filename string) bool {
+	cs.sessionsMutex.RLock()
+	defer cs.sessionsMutex.RUnlock()
+	
+	// Check if user has an active session with this file
+	for _, session := range cs.sessions {
+		// Get the session's user ID from userSessions mapping
+		sessionUserID := ""
+		for uid, sid := range cs.userSessions {
+			if sid == session.ID {
+				sessionUserID = uid
+				break
+			}
+		}
+		
+		// Check if this is the right user and they own this file
+		if sessionUserID == userID {
+			if session.UploadedFile == filename || session.ProcessedFile == filename {
+				return true
+			}
+		}
+	}
+	
+	return false
 }
 
 // Stop stops the cleanup service

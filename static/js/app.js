@@ -11,9 +11,15 @@ class VideoCutterApp {
         this.sessionID = null;
         this.sessionTimer = null;
         
+        // JWT Session Management
+        this.jwtToken = null;
+        this.userID = null;
+        this.sessionReady = false; // Track if session is initialized
+        
         this.initializeElements();
         this.bindEvents();
-        this.showSection('upload-section');
+        this.showInitializing();
+        this.initializeSession();
     }
 
     initializeElements() {
@@ -88,6 +94,75 @@ class VideoCutterApp {
         this.retryButton.addEventListener('click', this.resetApp.bind(this));
     }
 
+    // JWT Session Management Methods
+    async initializeSession() {
+        // Try to load existing token from localStorage
+        this.jwtToken = localStorage.getItem('jwt_token');
+        this.userID = localStorage.getItem('user_id');
+        
+        if (this.jwtToken && this.userID) {
+            console.log('Found existing JWT token for user:', this.userID);
+            // Use existing token (browser fingerprint should be the same)
+            this.sessionReady = true;
+            this.restoreUploadSection();
+        } else {
+            console.log('No existing token found, requesting new session');
+            await this.requestNewSession();
+        }
+    }
+    
+    async requestNewSession() {
+        try {
+            const response = await fetch('/api/session/init', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Session initialization failed: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                this.jwtToken = result.data.token;
+                this.userID = result.data.user_id;
+                
+                // Store in localStorage for persistence
+                localStorage.setItem('jwt_token', this.jwtToken);
+                localStorage.setItem('user_id', this.userID);
+                
+                console.log('New JWT session initialized for user:', this.userID);
+                this.sessionReady = true;
+                this.restoreUploadSection();
+            } else {
+                throw new Error('Invalid session response');
+            }
+        } catch (error) {
+            console.error('Failed to initialize session:', error);
+            this.showError('Failed to initialize session. Please refresh the page.');
+        }
+    }
+    
+    makeAuthenticatedRequest(url, options = {}) {
+        if (!this.jwtToken) {
+            console.error('JWT token not available, session ready:', this.sessionReady);
+            throw new Error('No JWT token available. Please refresh the page.');
+        }
+        
+        const headers = {
+            'Authorization': `Bearer ${this.jwtToken}`,
+            ...options.headers
+        };
+        
+        return fetch(url, {
+            ...options,
+            headers
+        });
+    }
+
     // Drag and Drop handlers
     handleDragOver(e) {
         e.preventDefault();
@@ -118,6 +193,12 @@ class VideoCutterApp {
 
     // File processing
     processFile(file) {
+        // Check if session is ready
+        if (!this.sessionReady || !this.jwtToken) {
+            this.showError('Session not ready. Please wait for authentication to complete.');
+            return;
+        }
+        
         // Validate file type - be more permissive with MIME types as they can vary
         const allowedTypes = [
             'video/mp4', 'video/avi', 'video/mov', 'video/quicktime', 
@@ -156,7 +237,7 @@ class VideoCutterApp {
             const chunkSize = 5 * 1024 * 1024; // 5MB chunks
             const totalChunks = Math.ceil(file.size / chunkSize);
             
-            const initResponse = await fetch('/api/upload/init', {
+            const initResponse = await this.makeAuthenticatedRequest('/api/upload/init', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -178,7 +259,7 @@ class VideoCutterApp {
             await this.uploadChunksParallel(file, uploadID, chunkSize, totalChunks);
             
             // Complete upload
-            const completeResponse = await fetch('/api/upload/complete', {
+            const completeResponse = await this.makeAuthenticatedRequest('/api/upload/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ upload_id: uploadID })
@@ -227,7 +308,7 @@ class VideoCutterApp {
         
         // Check for existing uploads (resume capability)
         try {
-            const statusResponse = await fetch(`/api/upload/status/${uploadID}`);
+            const statusResponse = await this.makeAuthenticatedRequest(`/api/upload/status/${uploadID}`);
             if (statusResponse.ok) {
                 const statusResult = await statusResponse.json();
                 if (statusResult.success) {
@@ -276,7 +357,7 @@ class VideoCutterApp {
             formData.append('chunk_index', index.toString());
             formData.append('chunk', chunk, `chunk_${index}`);
             
-            const response = await fetch('/api/upload/chunk', {
+            const response = await this.makeAuthenticatedRequest('/api/upload/chunk', {
                 method: 'POST',
                 body: formData
             });
@@ -318,7 +399,7 @@ class VideoCutterApp {
         }
         
         try {
-            const response = await fetch(`/api/metadata/${encodeURIComponent(this.uploadResponse.filename)}`);
+            const response = await this.makeAuthenticatedRequest(`/api/metadata/${encodeURIComponent(this.uploadResponse.filename)}`);
             
             if (!response.ok) {
                 throw new Error('Failed to fetch metadata');
@@ -423,7 +504,7 @@ class VideoCutterApp {
         } else {
             // Load video
             const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
-            this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+            this.videoPlayer.src = `/api/preview/${encodedFilename}?token=${this.jwtToken}`;
             console.log('Loading video:', this.videoPlayer.src);
             
             // Add error handler for video loading
@@ -458,7 +539,7 @@ class VideoCutterApp {
         
         // Load video preview immediately using upload response data
         const encodedFilename = encodeURIComponent(this.uploadResponse.filename);
-        this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+        this.videoPlayer.src = `/api/preview/${encodedFilename}?token=${this.jwtToken}`;
         this.videoPlayer.preload = 'metadata'; // Start loading metadata immediately
         console.log('Loading video preview immediately:', this.videoPlayer.src);
         
@@ -554,7 +635,7 @@ class VideoCutterApp {
         if (this.currentMetadata && this.currentMetadata.filename) {
             // Load video preview
             const encodedFilename = encodeURIComponent(this.currentMetadata.filename);
-            this.videoPlayer.src = `/api/preview/${encodedFilename}`;
+            this.videoPlayer.src = `/api/preview/${encodedFilename}?token=${this.jwtToken}`;
             console.log('Loading video preview:', this.videoPlayer.src);
             
             // Add error handler for video loading
@@ -798,7 +879,7 @@ class VideoCutterApp {
             
             console.log('Sending cut request:', requestBody);
             
-            const response = await fetch(`/api/cut?session_id=${this.sessionID || ''}`, {
+            const response = await this.makeAuthenticatedRequest('/api/cut', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -835,7 +916,7 @@ class VideoCutterApp {
     // Download video
     downloadVideo() {
         if (this.outputFilename) {
-            const downloadUrl = `/api/download/${this.outputFilename}?session_id=${this.sessionID || ''}`;
+            const downloadUrl = `/api/download/${this.outputFilename}?token=${this.jwtToken}`;
             window.open(downloadUrl, '_blank');
         }
     }
@@ -851,6 +932,58 @@ class VideoCutterApp {
     showError(message) {
         this.errorMessage.textContent = message;
         this.showSection('error-section');
+    }
+    
+    showInitializing() {
+        // Add a temporary initializing message to upload section
+        const uploadSection = this.sections.upload;
+        uploadSection.innerHTML = `
+            <h2>Upload Video</h2>
+            <div class="upload-area initializing" style="justify-content: center; align-items: center; height: 200px;">
+                <div class="upload-content">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 20px;">Initializing secure session...</p>
+                    <p class="upload-info">Please wait while we set up authentication.</p>
+                </div>
+            </div>
+        `;
+        this.showSection('upload-section');
+    }
+    
+    restoreUploadSection() {
+        // Restore original upload section HTML
+        const uploadSection = this.sections.upload;
+        uploadSection.innerHTML = `
+            <h2>Upload Video</h2>
+            <div class="upload-area" id="upload-area">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p>Drag & drop your video here or <span class="browse-link">browse files</span></p>
+                    <p class="upload-info">Supported formats: MP4, AVI, MOV, MKV, WebM, M4V (max 10GB)</p>
+                </div>
+                <input type="file" id="video-input" accept=".mp4,.avi,.mov,.mkv,.webm,.m4v" hidden>
+            </div>
+            <div id="upload-progress" class="progress-container" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p id="progress-text">Uploading...</p>
+            </div>
+        `;
+        
+        // Re-initialize elements after DOM change
+        this.uploadArea = document.getElementById('upload-area');
+        this.videoInput = document.getElementById('video-input');
+        this.progressContainer = document.getElementById('upload-progress');
+        this.progressFill = document.getElementById('progress-fill');
+        this.progressText = document.getElementById('progress-text');
+        
+        // Re-bind upload events
+        this.uploadArea.addEventListener('click', () => this.videoInput.click());
+        this.uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
+        this.uploadArea.addEventListener('dragleave', this.handleDragLeave.bind(this));
+        this.uploadArea.addEventListener('drop', this.handleDrop.bind(this));
+        this.videoInput.addEventListener('change', this.handleFileSelect.bind(this));
     }
 
 
@@ -988,7 +1121,7 @@ class VideoCutterApp {
         }
         
         try {
-            const response = await fetch(`/api/cleanup/session/${this.sessionID}/time-remaining`);
+            const response = await this.makeAuthenticatedRequest(`/api/cleanup/session/${this.sessionID}/time-remaining`);
             const result = await response.json();
             
             if (result.success && result.data) {
@@ -1051,8 +1184,8 @@ class VideoCutterApp {
             this.downloadButton.textContent = 'Download Cut Video';
         }
         
-        // Show upload section
-        this.showSection('upload-section');
+        // Get a fresh JWT session (this will show upload section when complete)
+        this.requestNewSession();
     }
 }
 
