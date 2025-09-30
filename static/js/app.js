@@ -1161,7 +1161,7 @@ class VideoCutterApp {
         this.showError(message);
     }
     
-    resetApp() {
+    async resetApp() {
         // Stop any running timers
         this.stopSessionTimer();
         
@@ -1184,8 +1184,18 @@ class VideoCutterApp {
             this.downloadButton.textContent = 'Download Cut Video';
         }
         
+        // Clear stored JWT token to force fresh session
+        localStorage.removeItem('jwt_token');
+        localStorage.removeItem('user_id');
+        this.jwtToken = null;
+        this.userID = null;
+        this.sessionReady = false;
+        
+        // Show initializing state
+        this.showInitializing();
+        
         // Get a fresh JWT session (this will show upload section when complete)
-        this.requestNewSession();
+        await this.requestNewSession();
     }
 }
 
