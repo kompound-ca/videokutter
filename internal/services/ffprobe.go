@@ -132,7 +132,8 @@ func (fps *FFprobeService) parseMetadata(probe FFProbeOutput, filePath string) (
 	// Extract only the base filename without path
 	filename := filepath.Base(filePath)
 
-	return &models.VideoMetadata{
+	// Create metadata struct
+	metadata := &models.VideoMetadata{
 		Filename:    filename,
 		Duration:    duration,
 		Format:      probe.Format.FormatName,
@@ -143,7 +144,13 @@ func (fps *FFprobeService) parseMetadata(probe FFProbeOutput, filePath string) (
 		AudioCodec:  audioCodec,
 		VideoCodec:  videoCodec,
 		UploadedAt:  time.Now(),
-	}, nil
+	}
+
+	// Determine browser compatibility
+	metadata.BrowserCompatible = fps.DetectBrowserCompatibility(metadata)
+	metadata.PreviewRequired = !metadata.BrowserCompatible
+
+	return metadata, nil
 }
 
 // GeneratePosterThumbnail creates a poster image at 1 second mark

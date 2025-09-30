@@ -23,6 +23,10 @@ func main() {
 	cleanupService := services.NewCleanupService(fileService)
 	jwtService := services.NewJWTService()
 	
+	// Initialize FFprobe service and optimized preview service
+	ffprobeService := services.NewFFprobeService()
+	previewService := services.NewOptimizedPreviewService(fileService.GetTempDir(), ffprobeService)
+	
 	// Perform startup cleanup to remove any leftover files from previous container runs
 	// This is crucial since user sessions are lost during container restarts
 	cleanupService.PerformStartupCleanup()
@@ -61,7 +65,7 @@ func main() {
 	app.Use(middleware.TimingMiddleware())
 
 	// Initialize handlers
-	videoHandler := handlers.NewVideoHandler(videoService, fileService, cleanupService)
+	videoHandler := handlers.NewVideoHandler(videoService, fileService, cleanupService, previewService)
 	cleanupHandler := handlers.NewCleanupHandler(cleanupService)
 	sessionHandler := handlers.NewSessionHandler(jwtService)
 	timingHandler := handlers.NewTimingHandler()
@@ -96,6 +100,7 @@ func main() {
 	api.Post("/cut", videoHandler.Cut)
 	api.Get("/download/:filename", videoHandler.Download)
 	api.Get("/preview/:filename", videoHandler.Preview)
+	api.Get("/preview-status/:filename", videoHandler.GetPreviewStatus)
 	api.Post("/generate-preview/:filename", videoHandler.GeneratePreview)
 	
 	// Cleanup endpoints

@@ -15,16 +15,18 @@ import (
 )
 
 type VideoHandler struct {
-	videoService   *services.VideoService
-	fileService    *services.FileService
-	cleanupService *services.CleanupService
+	videoService    *services.VideoService
+	fileService     *services.FileService
+	cleanupService  *services.CleanupService
+	previewService  *services.OptimizedPreviewService
 }
 
-func NewVideoHandler(videoService *services.VideoService, fileService *services.FileService, cleanupService *services.CleanupService) *VideoHandler {
+func NewVideoHandler(videoService *services.VideoService, fileService *services.FileService, cleanupService *services.CleanupService, previewService *services.OptimizedPreviewService) *VideoHandler {
 	return &VideoHandler{
 		videoService:   videoService,
 		fileService:    fileService,
 		cleanupService: cleanupService,
+		previewService: previewService,
 	}
 }
 
@@ -146,8 +148,26 @@ func (vh *VideoHandler) GetMetadata(c *fiber.Ctx) error {
 		"resolution": metadata.Resolution,
 		"format": metadata.Format,
 		"video_codec": metadata.VideoCodec,
+		"browser_compatible": metadata.BrowserCompatible,
+		"preview_required": metadata.PreviewRequired,
 		"optimization": "fast_extraction_used",
 	})
+
+	// Automatically request preview generation for non-browser-compatible files
+	if metadata.PreviewRequired {
+		middleware.LogTimingEvent(c, "preview_generation_requested", map[string]interface{}{
+			"filename": filename,
+			"reason": "non_browser_compatible",
+		})
+		
+		// Request preview generation asynchronously
+		go func() {
+			_, err := vh.previewService.RequestPreview(filename, filePath, metadata)
+			if err != nil {
+				fmt.Printf("Warning: failed to request preview for %s: %v\n", filename, err)
+			}
+		}()
+	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -324,7 +344,28 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	// Log for debugging
 	fmt.Printf("Preview request for filename: %s by user: %s\n", filename, userID)
 
-	// Serve original video with optimization headers for browser
+	// Check if optimized preview is available
+	if previewPath, hasPreview := vh.previewService.GetPreviewPath(filename); hasPreview {
+		// Log preview served from optimized version
+		middleware.LogTimingEvent(c, "preview_served_optimized", map[string]interface{}{
+			"filename": filename,
+			"preview_path": previewPath,
+		})
+		
+		fmt.Printf("Serving optimized preview for: %s\n", filename)
+		
+		// Set headers for optimized preview
+		c.Set("Content-Type", "video/mp4")
+		c.Set("Accept-Ranges", "bytes")
+		c.Set("Cache-Control", "public, max-age=3600")
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("Connection", "keep-alive")
+		c.Set("Content-Disposition", "inline")
+		
+		return c.SendFile(previewPath)
+	}
+
+	// Fall back to original video if no optimized preview available
 	filePath := vh.fileService.GetFilePath(filename)
 	if !vh.fileService.FileExists(filename) {
 		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
@@ -368,8 +409,47 @@ func (vh *VideoHandler) Preview(c *fiber.Ctx) error {
 	// sessionID := c.Query("session_id")
 	// Removed UpdateSessionAccess call to prevent timer extension
 
+	// Log fallback to original file
+	middleware.LogTimingEvent(c, "preview_served_original", map[string]interface{}{
+		"filename": filename,
+		"reason": "no_optimized_preview_available",
+	})
+	
 	fmt.Printf("Serving original video for preview: %s\n", filename)
 	return c.SendFile(filePath)
+}
+
+// GetPreviewStatus returns the status of preview generation for a file
+func (vh *VideoHandler) GetPreviewStatus(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	if filename == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false,
+			Message: "Filename parameter required",
+		})
+	}
+
+	// URL decode the filename
+	decodedFilename, err := url.QueryUnescape(filename)
+	if err != nil {
+		decodedFilename = filename
+	}
+	filename = decodedFilename
+
+	// Get preview status
+	previewInfo, err := vh.previewService.GetPreviewStatus(filename)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("No preview session found: %v", err),
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Preview status retrieved",
+		Data:    previewInfo,
+	})
 }
 
 // GeneratePreview creates a browser-compatible preview version

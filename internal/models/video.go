@@ -4,16 +4,18 @@ import "time"
 
 // VideoMetadata represents metadata extracted from a video file
 type VideoMetadata struct {
-	Filename    string        `json:"filename"`
-	Duration    time.Duration `json:"duration"`
-	Format      string        `json:"format"`
-	Resolution  string        `json:"resolution"`
-	Size        int64         `json:"size"`
-	Bitrate     string        `json:"bitrate"`
-	FrameRate   string        `json:"framerate"`
-	AudioCodec  string        `json:"audio_codec"`
-	VideoCodec  string        `json:"video_codec"`
-	UploadedAt  time.Time     `json:"uploaded_at"`
+	Filename           string        `json:"filename"`
+	Duration           time.Duration `json:"duration"`
+	Format             string        `json:"format"`
+	Resolution         string        `json:"resolution"`
+	Size               int64         `json:"size"`
+	Bitrate            string        `json:"bitrate"`
+	FrameRate          string        `json:"framerate"`
+	AudioCodec         string        `json:"audio_codec"`
+	VideoCodec         string        `json:"video_codec"`
+	BrowserCompatible  bool          `json:"browser_compatible"`
+	PreviewRequired    bool          `json:"preview_required"`
+	UploadedAt         time.Time     `json:"uploaded_at"`
 }
 
 // CutRequest represents a video cutting request
