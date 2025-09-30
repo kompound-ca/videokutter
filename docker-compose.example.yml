@@ -1,18 +1,25 @@
+networks:
+  videocutter_network:
+    driver: bridge
+
 services:
   videocutter:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kompound-videocutter
-    ports:
-      - "${PORT:-8080}:8080"
+    expose:
+      - "8080"
+    networks:
+      - videocutter_network
     environment:
       - PORT=8080
       - TEMP_DIR=/app/temp
+      - LOG_REQUESTS=${LOG_REQUESTS:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10737418240}
     volumes:
-      # Mount host directory for upload storage (configurable via .env)
-      # Change HOST_UPLOAD_DIR in .env to specify where files are stored on your host
-      - "${HOST_UPLOAD_DIR:-./uploads}:/app/temp"
+      - "${HOST_UPLOAD_DIR:-./temp}:/app/temp"
+    init: true
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://0.0.0.0:8080/api/health"]
       interval: 30s
@@ -20,12 +27,55 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
-    # Optimized resource limits for small VMs
     deploy:
       resources:
         limits:
-          memory: 2G     # Reduced for small VMs
-          cpus: '2.0'    # Single CPU core
+          memory: 3200M     # Increased to 1.6GB per instance (3.2GB total, leaves 800MB for system/nginx)
+          cpus: '1.8'       # 2 instances × 0.9 = 1.8 vCPU (leaves 0.2 for overhead)
         reservations:
-          memory: 512M   # Smaller reservation
-          cpus: '0.5'    # Half CPU reserved
+          memory: 1600M      # Higher reservation for memory-intensive chunk caching
+          cpus: '0.9'       # Reserve minimum CPU per instance
+
+  # Load balancer using nginx with SSL
+  nginx-lb:
+    image: nginx:alpine
+    container_name: videocutter-nginx-lb
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - videocutter_network
+    environment:
+      - DOMAIN=${DOMAIN:-videocutter.local}
+      - MAX_BODY_SIZE=${MAX_BODY_SIZE:-15G}
+      - LOG_REQUESTS=${LOG_REQUESTS:-false}
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./certbot-data:/var/www/certbot:ro
+    command: >
+      sh -c "
+      apk add --no-cache gettext &&
+      if [ \"$${LOG_REQUESTS}\" = \"true\" ]; then
+        export LOG_REQUESTS_DIRECTIVE='access_log /var/log/nginx/access.log;'
+      else
+        export LOG_REQUESTS_DIRECTIVE='access_log off;'
+      fi &&
+      envsubst '$${DOMAIN} $${MAX_BODY_SIZE} $${LOG_REQUESTS_DIRECTIVE}' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf &&
+      echo 'Testing nginx configuration...' &&
+      nginx -t &&
+      echo 'Starting nginx...' &&
+      nginx -g 'daemon off;'
+      "
+    restart: unless-stopped
+
+  # Certbot for SSL certificates with Cloudflare DNS
+  certbot:
+    image: certbot/dns-cloudflare:latest
+    container_name: videocutter-certbot
+    environment:
+      - DOMAIN=${DOMAIN:-videocutter.local}
+    volumes:
+      - ./ssl:/etc/letsencrypt
+      - ./certbot-data:/var/www/certbot
+      - ./cloudflare.ini:/etc/letsencrypt/cloudflare.ini:ro

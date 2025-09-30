@@ -60,6 +60,7 @@ WARP.md
 
 compose.yaml
 docker-compose.yml
-credentials.ini
+clouflare.ini
 
 ssl/
+certbot-data/
