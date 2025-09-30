@@ -60,3 +60,6 @@ WARP.md
 
 compose.yaml
 docker-compose.yml
+credentials.ini
+
+ssl/
