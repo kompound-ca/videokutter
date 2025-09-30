@@ -21,6 +21,9 @@ go.work
 .env
 .env.local
 
+# Credentials
+clouflare.ini
+
 # Temporary files
 *.tmp
 *.temp
@@ -58,9 +61,10 @@ Thumbs.db
 # WARP.md
 WARP.md
 
+# Personal Config
 compose.yaml
 docker-compose.yml
-clouflare.ini
 
+# Certs
 ssl/
 certbot-data/
