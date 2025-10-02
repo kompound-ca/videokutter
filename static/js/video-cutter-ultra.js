@@ -1481,7 +1481,7 @@ export class VideoCutterUltra {
                             Duration: ${video.duration} (${video.startTime} - ${video.endTime})<br>
                             Size: ${this.formatBytes(video.size)} | 
                             Processed: ${new Date(video.timestamp).toLocaleString()}
-                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'} |
+                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'} |<br>
                             Original File Name: ${video.originalName}
                         </div>
                 <div class="video-actions">
