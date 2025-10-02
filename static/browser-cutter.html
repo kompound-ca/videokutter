@@ -187,9 +187,8 @@
         </div>
     </div>
     
-    <div class="dark-mode-toggle" id="dark-mode-toggle">
+    <div class="dark-mode-toggle" id="dark-mode-toggle" title="Toggle Dark Mode">
         <span class="icon">☀️</span>
-        <span class="label">Light Mode</span>
     </div>
 
     <footer>
@@ -267,14 +266,13 @@
             
             function updateToggleUI(theme) {
                 const icon = toggle.querySelector('.icon');
-                const label = toggle.querySelector('.label');
                 
                 if (theme === 'dark') {
                     icon.textContent = '🌙';
-                    label.textContent = 'Dark Mode';
+                    toggle.title = 'Switch to Light Mode';
                 } else {
                     icon.textContent = '☀️';
-                    label.textContent = 'Light Mode';
+                    toggle.title = 'Switch to Dark Mode';
                 }
             }
         });

@@ -4,8 +4,6 @@
 /* ===== CSS Variables for Light/Dark Mode ===== */
 :root {
     /* Light mode colors */
-    --bg-gradient-start: #667eea;
-    --bg-gradient-end: #764ba2;
     --text-primary: #333;
     --text-secondary: #4a5568;
     --text-muted: #718096;
@@ -20,26 +18,28 @@
     --header-text: white;
     --modal-overlay: rgba(0, 0, 0, 0.5);
     --shadow-card: rgba(0, 0, 0, 0.1);
+    --storage-info-bg: #f0f8ff;
+    --storage-card-bg: #f7fafc;
 }
 
 [data-theme="dark"] {
-    /* Dark mode colors */
-    --bg-gradient-start: #1a202c;
-    --bg-gradient-end: #2d3748;
+    /* Dark mode colors - proper greys */
     --text-primary: #e2e8f0;
     --text-secondary: #cbd5e0;
     --text-muted: #a0aec0;
-    --bg-card: #2d3748;
-    --bg-secondary: #1a202c;
-    --bg-tertiary: #2d3748;
-    --border-primary: #4a5568;
-    --border-secondary: #4a5568;
-    --border-accent: #4a5568;
+    --bg-card: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --bg-tertiary: #333333;
+    --border-primary: #4a4a4a;
+    --border-secondary: #5a5a5a;
+    --border-accent: #4a4a4a;
     --accent-color: #667eea;
     --accent-hover: #764ba2;
     --header-text: #e2e8f0;
     --modal-overlay: rgba(0, 0, 0, 0.7);
-    --shadow-card: rgba(0, 0, 0, 0.3);
+    --shadow-card: rgba(0, 0, 0, 0.5);
+    --storage-info-bg: #2d2d2d;
+    --storage-card-bg: #333333;
 }
 
 /* ===== Global Styles ===== */
@@ -64,11 +64,11 @@ html.preload body {
 
 body {
     font-family: 'JetBrains Mono', monospace;
-    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
     min-height: 100vh;
     color: var(--text-primary);
     line-height: 1.6;
-    transition: opacity 150ms ease, background 0.3s ease;
+    transition: opacity 150ms ease;
 }
 
 .container {
@@ -201,10 +201,11 @@ input:checked + .toggle-slider:before {
 
 .storage-card {
     padding: 1rem;
-    background: #f7fafc;
+    background: var(--storage-card-bg);
     border-radius: 6px;
     text-align: center;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-primary);
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .storage-card .value {
@@ -224,17 +225,18 @@ input:checked + .toggle-slider:before {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 2rem;
-    border-bottom: 2px solid #e2e8f0;
-    background: white;
+    border-bottom: 2px solid var(--border-primary);
+    background: var(--bg-card);
     border-radius: 8px 8px 0 0;
     padding: 0.5rem 0.5rem 0;
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .tab {
     padding: 1rem 2rem;
     background: none;
     border: none;
-    color: #718096;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 1rem;
     font-weight: 500;
@@ -245,13 +247,13 @@ input:checked + .toggle-slider:before {
 }
 
 .tab:hover {
-    color: #667eea;
-    background: #f7fafc;
+    color: var(--accent-color);
+    background: var(--bg-secondary);
 }
 
 .tab.active {
-    color: #667eea;
-    background: white;
+    color: var(--accent-color);
+    background: var(--bg-card);
 }
 
 .tab.active::after {
@@ -261,7 +263,7 @@ input:checked + .toggle-slider:before {
     left: 0;
     right: 0;
     height: 2px;
-    background: #667eea;
+    background: var(--accent-color);
 }
 
 .tab-content {
@@ -274,19 +276,19 @@ input:checked + .toggle-slider:before {
 
 /* ===== Upload Area ===== */
 .upload-area {
-    border: 2px dashed #cbd5e0;
+    border: 2px dashed var(--border-secondary);
     border-radius: 8px;
     padding: 40px;
     text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    background: #f7fafc;
+    background: var(--bg-secondary);
     margin-bottom: 1rem;
 }
 
 .upload-area:hover {
-    border-color: #667eea;
-    background: #edf2f7;
+    border-color: var(--accent-color);
+    background: var(--bg-tertiary);
 }
 
 .upload-area.dragover {
@@ -413,31 +415,32 @@ input[type="file"] {
     bottom: 20px;
     left: 20px;
     z-index: 1000;
+    width: 50px;
+    height: 50px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    justify-content: center;
     background: var(--bg-card);
-    border: 1px solid var(--border-primary);
-    border-radius: 8px;
+    border: 2px solid var(--border-primary);
+    border-radius: 50%;
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 2px 8px var(--shadow-card);
 }
 
 .dark-mode-toggle:hover {
-    transform: translateY(-2px);
+    transform: scale(1.1);
     box-shadow: 0 4px 12px var(--shadow-card);
 }
 
 .dark-mode-toggle .icon {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
     transition: transform 0.3s ease;
+    line-height: 1;
 }
 
-.dark-mode-toggle .label {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
+.dark-mode-toggle:hover .icon {
+    transform: rotate(20deg);
 }
 
 /* ===== Video Grid ===== */
@@ -476,7 +479,7 @@ input[type="file"] {
 
 .video-meta {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--text-muted);
     margin-bottom: 0.5rem;
 }
 
@@ -504,20 +507,22 @@ video {
 /* ===== Timeline ===== */
 .timeline-container {
     margin: 1.5rem 0;
-    background: #f7fafc;
+    background: var(--bg-secondary);
     padding: 1rem;
     border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-primary);
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .timeline {
     position: relative;
     height: 60px;
-    background: #e2e8f0;
+    background: var(--border-primary);
     border-radius: 8px;
     cursor: pointer;
     overflow: visible;
     margin-bottom: 2rem;
+    transition: background 0.3s ease;
 }
 
 .timeline-progress {
@@ -613,18 +618,19 @@ video {
 .input-group label {
     margin-bottom: 0.25rem;
     font-weight: 500;
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .time-display {
     padding: 0.5rem;
-    background: white;
-    border: 1px solid #cbd5e0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-secondary);
     border-radius: 4px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 1rem;
     text-align: center;
-    color: #2d3748;
+    color: var(--text-primary);
+    transition: background 0.3s ease, border 0.3s ease, color 0.3s ease;
 }
 
 /* ===== Progress Bar - Fixed ===== */
@@ -635,10 +641,11 @@ video {
 .progress-bar {
     width: 100%;
     height: 30px;
-    background: #e2e8f0;
+    background: var(--border-primary);
     border-radius: 15px;
     overflow: hidden;
     position: relative;
+    transition: background 0.3s ease;
 }
 
 .progress-fill {
@@ -695,10 +702,11 @@ video {
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
-    background: white;
+    background: var(--bg-card);
     border-radius: 6px;
     margin-bottom: 0.5rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-primary);
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .processed-info {
@@ -708,12 +716,12 @@ video {
 .processed-name {
     font-weight: 500;
     margin-bottom: 0.25rem;
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .processed-meta {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--text-muted);
 }
 
 /* ===== Spinner ===== */
@@ -741,7 +749,7 @@ video {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--modal-overlay);
     align-items: center;
     justify-content: center;
 }
@@ -767,7 +775,7 @@ video {
 }
 
 .modal-header h2 {
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .modal-body {
