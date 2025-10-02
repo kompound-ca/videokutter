@@ -1481,11 +1481,9 @@ export class VideoCutterUltra {
                             Duration: ${video.duration} (${video.startTime} - ${video.endTime})<br>
                             Size: ${this.formatBytes(video.size)} | 
                             Processed: ${new Date(video.timestamp).toLocaleString()}
-                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}
+                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'} |
+                            Original File Name: ${video.originalName}
                         </div>
-                        ${video.originalName ? `<div class="processed-original">Original File Name: ${video.originalName}</div>` : ''}
-                    </div>
-                </div>
                 <div class="video-actions">
                     <button class="btn btn-success" onclick="cutter.downloadProcessed(${video.id})">Download</button>
                     <button class="btn btn-secondary" onclick="cutter.previewProcessed(${video.id})">Preview</button>
