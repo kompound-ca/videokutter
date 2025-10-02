@@ -1,183 +1,180 @@
-# Kompound Video Kutter
+# Kompound Video Kutter - Browser Edition
 
-Web-based video cutting tool built with Go and FFmpeg. Upload videos, select cut ranges, and download processed files.
+A modern, browser-based video cutting tool that processes videos entirely client-side using WebAssembly and FFmpeg. No server uploads required - all processing happens in your browser for maximum privacy and speed.
 
 ## Features
 
-- Lossless video cutting using FFmpeg stream copying
-- Support for files up to 10GB (MP4, AVI, MOV, MKV)
-- Interactive timeline for precise cut selection
-- Automatic file cleanup
-- Dockerized deployment
+- **100% Browser-Based**: All video processing happens locally in your browser
+- **No Upload Required**: Videos never leave your device
+- **Lossless Cutting**: Uses FFmpeg stream copying for fast, quality-preserving cuts
+- **Persistent Storage**: Optional browser storage to keep videos between sessions
+- **Dark Mode**: Built-in dark/light theme toggle with system preference detection
+- **Supported Formats**: MP4, AVI, MOV, MKV, WebM, M4V
+- **Interactive Timeline**: Visual timeline with draggable handles for precise cuts
+- **Real-time Preview**: Preview your cuts before processing
+
+## Requirements
+
+- Modern web browser with WebAssembly support (Chrome, Firefox, Edge, Safari)
+- Go 1.19+ (for running the server)
+- Docker (optional, for containerized deployment)
 
 ## Quick Start
 
-### Development Mode
+### Local Development
+
+1. Clone the repository:
+```bash
+git clone https://github.com/kompound-ca/Kompound-VideoCutter.git
+cd Kompound-VideoCutter
+```
+
+2. Run with Go:
+```bash
+go mod download
+go run main.go
+```
+
+3. Access the application:
+```
+http://localhost:8080
+```
+
+### Docker Deployment
 
 1. Clone and configure:
-   ```bash
-   git clone https://github.com/kompound-ca/videocutter.git
-   cd videocutter
-   cp .env.example .env
-   ```
+```bash
+git clone https://github.com/kompound-ca/Kompound-VideoCutter.git
+cd Kompound-VideoCutter
+cp .env.example .env
+```
 
-2. Set development mode in `.env`:
-   ```env
-   COMPOSE_PROFILES=development
-   ```
+2. Build and run:
+```bash
+docker compose up -d --build
+```
 
-3. Start:
-   ```bash
-   docker compose up -d --build
-   ```
+3. Access the application:
+```
+http://localhost:8080
+```
 
-4. Access: `http://localhost:8080`
+## Usage
 
-### Production Mode
+1. **Upload Video**: 
+   - Click the upload area or drag & drop your video file
+   - Videos are stored locally in your browser's IndexedDB
 
-1. Set production mode in `.env`:
-   ```env
-   COMPOSE_PROFILES=production
-   DOMAIN=your-domain.com
-   ```
+2. **Select Video**: 
+   - Go to the Library tab to see all uploaded videos
+   - Click "Select" on the video you want to cut
 
-2. Start with SSL/nginx:
-   ```bash
-   docker compose --profile production up -d --build
-   ```
+3. **Cut Video**:
+   - Use the timeline handles or input precise timestamps
+   - Click "Cut Video" to process
+   - Processing happens entirely in your browser
 
-3. Access: `https://your-domain.com`
+4. **Download**:
+   - Processed videos appear in the "Processed" tab
+   - Click "Download" to save to your device
+
+## Browser Storage
+
+The application offers two storage modes:
+
+- **Temporary Storage** (Default): Browser may clear data when space is needed
+- **Persistent Storage** (Recommended): Videos remain until manually deleted
+
+To enable persistent storage, toggle the switch in the Storage Settings section.
 
 ## Configuration
 
-Key variables in `.env`:
+Environment variables (`.env`):
 
 ```env
-COMPOSE_PROFILES=development  # or "production"
-PORT=8080
-DOMAIN=videocutter.local
-HOST_UPLOAD_DIR=./temp
+PORT=8080                    # Server port
+LOG_LEVEL=info              # Logging level (debug, info, warn, error)
+LOG_REQUESTS=true           # Enable request logging
 ```
 
-## API Documentation
+## Technical Details
 
-### Endpoints
+- **Frontend**: Pure JavaScript with WebAssembly-based FFmpeg
+- **Backend**: Minimal Go server for serving static files
+- **Processing**: FFmpeg.wasm for client-side video processing
+- **Storage**: Browser IndexedDB for video persistence
+- **Styling**: Custom CSS with CSS variables for theming
 
-#### `POST /api/upload`
-Upload a video file for processing.
+## Browser Compatibility
 
-**Request:** Multipart form with `video` field
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Video uploaded successfully",
-  "data": {
-    "filename": "sample_20241127_123456.mp4",
-    "duration": 300000000000,
-    "format": "mov,mp4,m4a,3gp,3g2,mj2",
-    "resolution": "1920x1080",
-    "size": 104857600,
-    "bitrate": "2000000",
-    "framerate": "30/1",
-    "video_codec": "h264",
-    "audio_codec": "aac",
-    "uploaded_at": "2024-11-27T12:34:56Z"
-  }
-}
+- Chrome/Edge 90+
+- Firefox 89+
+- Safari 15+
+- Opera 76+
+
+Requires WebAssembly, IndexedDB, and modern JavaScript support.
+
+## Development
+
+### Project Structure
+```
+Kompound-VideoCutter/
+├── static/
+│   ├── browser-cutter.html    # Main HTML file
+│   ├── css/
+│   │   └── browser-cutter.css # Styles with dark mode
+│   ├── js/
+│   │   ├── browser-cutter.js  # Main application logic
+│   │   ├── video-cutter-ultra.js # Core video processing
+│   │   └── video-worker.js    # Web Worker for processing
+│   └── icon/
+│       └── kompound.svg       # Application icon
+├── main.go                    # Go server
+├── docker-compose.yml         # Docker configuration
+├── Dockerfile                 # Container build file
+└── README.md                  # This file
 ```
 
-#### `GET /api/metadata/{filename}`
-Retrieve metadata for an uploaded video.
+### Building from Source
 
-**Response:** Same as upload response data
-
-#### `POST /api/cut`
-Cut a video with specified start and end times.
-
-**Request:**
-```json
-{
-  "filename": "sample_20241127_123456.mp4",
-  "start_time": 30000000000,
-  "end_time": 120000000000
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Video cut completed",
-  "data": {
-    "output_filename": "sample_cut_20241127_124500.mp4",
-    "success": true,
-    "message": "Video cut successfully"
-  }
-}
-```
-
-#### `GET /api/download/{filename}`
-Download a processed video file.
-
-**Response:** Video file with appropriate Content-Type and Content-Disposition headers
-
-#### `GET /api/health`
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok"
-}
-```
-
-
-
-## Docker Commands
-
-### Development with auto-rebuild
 ```bash
-# Build and run
-docker compose up -d --build
+# Install dependencies
+go mod download
 
-# View logs
-docker compose logs -f videocutter
+# Build binary
+go build -o videocutter main.go
 
-# Restart after code changes (required per user rules)
-docker compose down && docker compose up -d --build
-
-# Stop and remove
-docker compose down
+# Run
+./videocutter
 ```
 
-### Production deployment
-```bash
-# Run in production mode
-docker compose -f docker-compose.yml up -d
+## License
 
-# Update application
-docker compose down && docker compose pull && docker compose up -d
-```
+Copyright © 2025 Kompound (https://kompound.ca)
 
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
 
+### What this means:
 
+- ✅ **You CAN**: Use, modify, and distribute this software
+- ✅ **You CAN**: Use it for personal or internal business purposes
+- ❌ **You CANNOT**: Use it commercially without sharing your modifications
+- ❌ **You CANNOT**: Distribute it without providing source code
+- ❌ **You CANNOT**: Change the license or remove attribution
 
+### Third-Party Licenses
 
+- **FFmpeg.wasm**: Licensed under LGPL 2.1. Used for video processing in the browser.
+- **Go Fiber**: MIT License. Web framework for the server.
 
+For full license terms, see the [LICENSE](LICENSE) file.
 
+## Support
 
-### Resource Requirements
-- **Minimum**: 512MB RAM, 1 CPU core, 10GB disk
-- **Recommended**: 2GB RAM, 2 CPU cores, 50GB+ disk
-- **Network**: Stable connection for large file uploads
+For issues, feature requests, or questions, please open an issue on GitHub.
 
-## 📄 License & Credits
+---
 
-### FFmpeg License
-This application uses FFmpeg, which is licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or later. FFmpeg is dynamically linked and not modified.
-
-### Application License
-Kompound VideoCutter is proprietary software owned by Kompound.ca.
+Made with ❤️ by [Kompound](https://kompound.ca)
 
 

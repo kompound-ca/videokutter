@@ -1,0 +1,69 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2025 Kompound (https://kompound.ca)
+ 
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+                    ADDITIONAL TERMS AND CONDITIONS
+
+ For the avoidance of doubt, the copyright holder grants the following
+ additional permissions:
+
+ 1. You may use this software for personal, educational, or internal
+    business purposes without restriction.
+
+ 2. If you modify this software and distribute it, you must:
+    - Make the source code of your modifications available
+    - License your modifications under GPL-3.0
+    - Clearly indicate what changes you made
+    - Include this original copyright notice
+
+ 3. Commercial use is permitted PROVIDED that:
+    - Any modifications are shared back to the community
+    - The source code remains open and available
+    - Proper attribution is given to Kompound
+
+ 4. You may NOT:
+    - Remove or obscure any copyright notices
+    - Claim this work as your sole creation
+    - Use the Kompound name or logo without permission
+    - Sell this software as a standalone product without substantial modifications
+
+                    THIRD-PARTY COMPONENTS
+
+ This software includes the following third-party components:
+
+ - FFmpeg.wasm: Licensed under LGPL 2.1
+   Used for video processing in the browser
+   Source: https://github.com/ffmpegwasm/ffmpeg.wasm
+
+ - Go Fiber: Licensed under MIT
+   Web framework for the server
+   Source: https://github.com/gofiber/fiber
+
+ Each component retains its original license and copyright.
+
+                    NO WARRANTY
+
+ THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+ For the full GPL-3.0 license text, visit:
+ https://www.gnu.org/licenses/gpl-3.0.en.html
