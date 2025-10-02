@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/kompound-ca/videokutter/b69a6be6f2a295a563d63464ccb7d51338be267d/static/icon/kompound.svg?token=A7QKVLXWHP7BGA3LC727DD3I32QR6" alt="Kompound Logo" width="250">
+<img src="https://raw.githubusercontent.com/kompound-ca/videokutter/refs/heads/master/static/icon/kompound.svg?token=GHSAT0AAAAAADK7MMP53VS3ORMJFOVBAZIG2G6WXOQ" alt="Kompound Logo" width="250">
 
 # Kompound Video Kutter
 
