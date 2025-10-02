@@ -187,6 +187,11 @@
         </div>
     </div>
     
+    <div class="dark-mode-toggle" id="dark-mode-toggle">
+        <span class="icon">☀️</span>
+        <span class="label">Light Mode</span>
+    </div>
+
     <footer>
         <p>&copy; 2025 Kompound - Video Cutting Tool</p>
     </footer>
@@ -239,6 +244,41 @@
             </div>
         </div>
     </div>
+    
+    <!-- Dark Mode JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('dark-mode-toggle');
+            const htmlElement = document.documentElement;
+            
+            // Load saved theme from localStorage
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            htmlElement.setAttribute('data-theme', savedTheme);
+            updateToggleUI(savedTheme);
+            
+            toggle.addEventListener('click', () => {
+                const currentTheme = htmlElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                htmlElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateToggleUI(newTheme);
+            });
+            
+            function updateToggleUI(theme) {
+                const icon = toggle.querySelector('.icon');
+                const label = toggle.querySelector('.label');
+                
+                if (theme === 'dark') {
+                    icon.textContent = '🌙';
+                    label.textContent = 'Dark Mode';
+                } else {
+                    icon.textContent = '☀️';
+                    label.textContent = 'Light Mode';
+                }
+            }
+        });
+    </script>
     
     <!-- Load FFmpeg from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>

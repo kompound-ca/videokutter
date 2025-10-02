@@ -1,6 +1,47 @@
 /* Browser Video Cutter - Integrated Styles */
 /* Combines original style.css with browser-specific features */
 
+/* ===== CSS Variables for Light/Dark Mode ===== */
+:root {
+    /* Light mode colors */
+    --bg-gradient-start: #667eea;
+    --bg-gradient-end: #764ba2;
+    --text-primary: #333;
+    --text-secondary: #4a5568;
+    --text-muted: #718096;
+    --bg-card: white;
+    --bg-secondary: #f7fafc;
+    --bg-tertiary: #f0f8ff;
+    --border-primary: #e2e8f0;
+    --border-secondary: #cbd5e0;
+    --border-accent: #b0d4ff;
+    --accent-color: #667eea;
+    --accent-hover: #764ba2;
+    --header-text: white;
+    --modal-overlay: rgba(0, 0, 0, 0.5);
+    --shadow-card: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+    /* Dark mode colors */
+    --bg-gradient-start: #1a202c;
+    --bg-gradient-end: #2d3748;
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e0;
+    --text-muted: #a0aec0;
+    --bg-card: #2d3748;
+    --bg-secondary: #1a202c;
+    --bg-tertiary: #2d3748;
+    --border-primary: #4a5568;
+    --border-secondary: #4a5568;
+    --border-accent: #4a5568;
+    --accent-color: #667eea;
+    --accent-hover: #764ba2;
+    --header-text: #e2e8f0;
+    --modal-overlay: rgba(0, 0, 0, 0.7);
+    --shadow-card: rgba(0, 0, 0, 0.3);
+}
+
 /* ===== Global Styles ===== */
 * {
     margin: 0;
@@ -23,11 +64,11 @@ html.preload body {
 
 body {
     font-family: 'JetBrains Mono', monospace;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
     min-height: 100vh;
-    color: #333;
+    color: var(--text-primary);
     line-height: 1.6;
-    transition: opacity 150ms ease;
+    transition: opacity 150ms ease, background 0.3s ease;
 }
 
 .container {
@@ -40,7 +81,7 @@ body {
 header {
     text-align: center;
     margin-bottom: 30px;
-    color: white;
+    color: var(--header-text);
 }
 
 header h1 {
@@ -59,16 +100,17 @@ header p {
 
 /* ===== Card Layout ===== */
 .card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 30px;
     margin-bottom: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 10px 30px var(--shadow-card);
+    border: 1px solid var(--border-primary);
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .card h2 {
-    color: #4a5568;
+    color: var(--text-secondary);
     margin-bottom: 20px;
     font-size: 1.5rem;
     font-weight: 500;
@@ -76,8 +118,8 @@ header p {
 
 /* ===== Storage Settings ===== */
 .storage-settings {
-    background: #f0f8ff;
-    border: 1px solid #b0d4ff;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-accent);
     border-radius: 8px;
     padding: 1rem;
     margin-bottom: 1.5rem;
@@ -86,6 +128,7 @@ header p {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 1rem;
+    transition: background 0.3s ease, border 0.3s ease;
 }
 
 .storage-toggle {
@@ -364,6 +407,39 @@ input[type="file"] {
     background: #138496;
 }
 
+/* ===== Dark Mode Toggle ===== */
+.dark-mode-toggle {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px var(--shadow-card);
+}
+
+.dark-mode-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--shadow-card);
+}
+
+.dark-mode-toggle .icon {
+    font-size: 1.2rem;
+    transition: transform 0.3s ease;
+}
+
+.dark-mode-toggle .label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
 /* ===== Video Grid ===== */
 .video-grid {
     display: grid;
@@ -372,10 +448,10 @@ input[type="file"] {
 }
 
 .video-card {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-primary);
     border-radius: 8px;
     padding: 1rem;
-    background: white;
+    background: var(--bg-card);
     transition: all 0.3s ease;
 }
 
@@ -395,7 +471,7 @@ input[type="file"] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .video-meta {
@@ -675,12 +751,15 @@ video {
 }
 
 .modal-content {
-    background-color: white;
+    background-color: var(--bg-card);
     padding: 2rem;
     border-radius: 12px;
-    max-width: 500px;
+    max-width: 800px;
     width: 90%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px var(--shadow-card);
+    border: 1px solid var(--border-primary);
 }
 
 .modal-header {
@@ -694,7 +773,7 @@ video {
 .modal-body {
     margin-bottom: 1.5rem;
     line-height: 1.6;
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .modal-footer {
