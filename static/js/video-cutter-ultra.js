@@ -1474,14 +1474,16 @@ export class VideoCutterUltra {
         processed.forEach(video => {
             const item = document.createElement('li');
             item.className = 'processed-item';
-            item.innerHTML = `
-                <div class="processed-info">
-                    <div class="processed-name">${video.name}</div>
-                    <div class="processed-meta">
-                        Duration: ${video.duration} (${video.startTime} - ${video.endTime})<br>
-                        Size: ${this.formatBytes(video.size)} | 
-                        Processed: ${new Date(video.timestamp).toLocaleString()}
-                        ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}
+                item.innerHTML = `
+                    <div class="processed-info">
+                        <div class="processed-name">${esc(video.name)}</div>
+                        <div class="processed-meta">
+                            Duration: ${esc(video.duration)} (${esc(video.startTime)} - ${esc(video.endTime)})<br>
+                            Size: ${this.formatBytes(video.size)} | 
+                            Processed: ${new Date(video.timestamp).toLocaleString()}
+                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}
+                        </div>
+                        ${video.originalName ? `<div class="processed-original">Original File Name: ${esc(video.originalName)}</div>` : ''}
                     </div>
                 </div>
                 <div class="video-actions">
