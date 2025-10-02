@@ -1,4 +1,6 @@
-# Kompound Video Kutter - Browser Edition
+<img src="https://raw.githubusercontent.com/kompound-ca/videokutter/b69a6be6f2a295a563d63464ccb7d51338be267d/static/icon/kompound.svg?token=A7QKVLXWHP7BGA3LC727DD3I32QR6" alt="Kompound Logo" width="250">
+
+# Kompound Video Kutter
 
 A modern, browser-based video cutting tool that processes videos entirely client-side using WebAssembly and FFmpeg. No server uploads required - all processing happens in your browser for maximum privacy and speed.
 
@@ -25,8 +27,8 @@ A modern, browser-based video cutting tool that processes videos entirely client
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/kompound-ca/Kompound-VideoCutter.git
-cd Kompound-VideoCutter
+git clone https://github.com/kompound-ca/videokutter.git
+cd videokutter
 ```
 
 2. Run with Go:
@@ -44,9 +46,10 @@ http://localhost:8080
 
 1. Clone and configure:
 ```bash
-git clone https://github.com/kompound-ca/Kompound-VideoCutter.git
-cd Kompound-VideoCutter
+git clone https://github.com/kompound-ca/videokutter.git
+cd videokutter
 cp .env.example .env
+cp docker-compose.example.yml docker-compose.yml
 ```
 
 2. Build and run:
@@ -95,57 +98,8 @@ Environment variables (`.env`):
 PORT=8080                    # Server port
 LOG_LEVEL=info              # Logging level (debug, info, warn, error)
 LOG_REQUESTS=true           # Enable request logging
-```
-
-## Technical Details
-
-- **Frontend**: Pure JavaScript with WebAssembly-based FFmpeg
-- **Backend**: Minimal Go server for serving static files
-- **Processing**: FFmpeg.wasm for client-side video processing
-- **Storage**: Browser IndexedDB for video persistence
-- **Styling**: Custom CSS with CSS variables for theming
-
-## Browser Compatibility
-
-- Chrome/Edge 90+
-- Firefox 89+
-- Safari 15+
-- Opera 76+
-
-Requires WebAssembly, IndexedDB, and modern JavaScript support.
-
-## Development
-
-### Project Structure
-```
-Kompound-VideoCutter/
-├── static/
-│   ├── browser-cutter.html    # Main HTML file
-│   ├── css/
-│   │   └── browser-cutter.css # Styles with dark mode
-│   ├── js/
-│   │   ├── browser-cutter.js  # Main application logic
-│   │   ├── video-cutter-ultra.js # Core video processing
-│   │   └── video-worker.js    # Web Worker for processing
-│   └── icon/
-│       └── kompound.svg       # Application icon
-├── main.go                    # Go server
-├── docker-compose.yml         # Docker configuration
-├── Dockerfile                 # Container build file
-└── README.md                  # This file
-```
-
-### Building from Source
-
-```bash
-# Install dependencies
-go mod download
-
-# Build binary
-go build -o videocutter main.go
-
-# Run
-./videocutter
+COMPOSE_PROFILES=production   # Set to "production" for production mode with nginx and SSL certificates. Set to "development" for local development without SSL/nginx (direct Go server access).
+DOMAIN=videocutter.local   # DOMAIN specifies the domain name used for SSL certificates and nginx configuration
 ```
 
 ## License
@@ -153,14 +107,6 @@ go build -o videocutter main.go
 Copyright © 2025 Kompound (https://kompound.ca)
 
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
-
-### What this means:
-
-- ✅ **You CAN**: Use, modify, and distribute this software
-- ✅ **You CAN**: Use it for personal or internal business purposes
-- ❌ **You CANNOT**: Use it commercially without sharing your modifications
-- ❌ **You CANNOT**: Distribute it without providing source code
-- ❌ **You CANNOT**: Change the license or remove attribution
 
 ### Third-Party Licenses
 
@@ -175,6 +121,6 @@ For issues, feature requests, or questions, please open an issue on GitHub.
 
 ---
 
-Made with ❤️ by [Kompound](https://kompound.ca)
+[Kompound](https://kompound.ca)
 
 
