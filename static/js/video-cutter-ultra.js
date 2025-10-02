@@ -1599,7 +1599,7 @@ export class VideoCutterUltra {
                         <div><strong>Available:</strong> ${availableGB} GB</div>
                         <div><strong>Videos:</strong> ${await this.getVideoCount()}</div>
                     </div>
-                    ${!isPersistent ? '<p style="margin-top: 0.75rem; padding: 0.5rem; background: #fff5f5; border-left: 3px solid #fc8181; font-size: 0.85rem;"><strong>Tip:</strong> Enable persistent storage above to prevent data loss and potentially increase quota.</p>' : ''}
+                    ${!isPersistent ? '<p style="margin-top: 0.75rem; padding: 0.5rem; background: #fff5f5; border-left: 3px solid #fff34bff; font-size: 0.85rem;"><strong>Tip:</strong> Enable persistent storage above to prevent data loss and potentially increase quota.</p>' : ''}
                 `;
                 
                 // Also update the main storage display
