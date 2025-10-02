@@ -1,4 +1,4 @@
-# Kompound VideoCutter
+# Kompound Video Kutter
 
 Web-based video cutting tool built with Go and FFmpeg. Upload videos, select cut ranges, and download processed files.
 
