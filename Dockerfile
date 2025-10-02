@@ -1,6 +1,6 @@
-# Multi-stage Dockerfile for Kompound VideoCutter
+# Minimal Dockerfile for Browser-Only VideoCutter
 
-# Build stage - use golang:alpine for faster builds
+# Build stage
 FROM golang:1.22-alpine AS builder
 
 # Install build tools
@@ -16,23 +16,23 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-w -s' -o videocutter .
 
-# Runtime stage - minimal Alpine with FFmpeg
+# Runtime stage - minimal Alpine (no FFmpeg needed for browser-only version)
 FROM alpine:3.19
 
-# Install runtime dependencies and create user in single layer
-RUN apk add --no-cache ffmpeg ca-certificates wget && \
-    adduser -D appuser && \
-    mkdir -p /app/temp && \
-    chown -R appuser:appuser /app
+# Install minimal runtime dependencies and create user
+RUN apk add --no-cache ca-certificates wget && \
+    adduser -D appuser
+
 WORKDIR /app
+
+# Copy the binary and static files
 COPY --from=builder --chown=appuser:appuser /app/videocutter .
 COPY --from=builder --chown=appuser:appuser /app/static ./static
-# Ensure temp directory has correct permissions
-RUN chmod 755 /app/temp && chown -R appuser:appuser /app/temp
+
 USER appuser
 
 # Environment and runtime config
-ENV PORT=8080 TEMP_DIR=/app/temp
+ENV PORT=8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --retries=2 CMD wget -q --spider http://localhost:8080/api/health || exit 1
 CMD ["./videocutter"]

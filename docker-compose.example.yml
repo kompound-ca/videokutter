@@ -7,22 +7,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: videocutter
     ports:
-      - "${PORT:-8080}:8080"  # Always expose port for development access
+      - "${PORT:-8080}:8080"  # Direct access for development
     networks:
       - videocutter_network
     environment:
       - PORT=8080
-      - COMPOSE_PROFILES=${COMPOSE_PROFILES:-production}
-      - TEMP_DIR=/app/temp
       - LOG_REQUESTS=${LOG_REQUESTS:-false}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10737418240}
-      - DOMAIN=${DOMAIN:-videocutter.local}
-      - JWT_SECRET=${JWT_SECRET}
+      - DOMAIN=${DOMAIN:-localhost}
     volumes:
-      - "${HOST_UPLOAD_DIR:-./temp}:/app/temp"
-    init: true
+      - temp:/app/temp
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://0.0.0.0:8080/api/health"]
       interval: 30s
@@ -30,19 +26,11 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 3200M
-          cpus: '1.8'
-        reservations:
-          memory: 1600M
-          cpus: '0.9'
 
-  # Load balancer using nginx with SSL (only in production mode)
-  nginx-lb:
+  # Nginx reverse proxy (production mode only)
+  nginx:
     image: nginx:alpine
-    container_name: videocutter-nginx-lb
+    container_name: videocutter-nginx
     profiles:
       - production  # Only start with --profile production
     ports:
@@ -51,14 +39,12 @@ services:
     networks:
       - videocutter_network
     environment:
-      - DOMAIN=${DOMAIN:-videocutter.local}
-      - MAX_BODY_SIZE=${MAX_BODY_SIZE:-15G}
+      - DOMAIN=${DOMAIN:-localhost}
       - LOG_REQUESTS=${LOG_REQUESTS:-false}
     volumes:
-      - ./nginx-lb.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
       - ./ssl:/etc/nginx/ssl:ro
       - ./certbot-data:/var/www/certbot:ro
-      - "${HOST_UPLOAD_DIR:-./temp}:/app/temp:ro"  # Mount temp directory for direct preview serving
     command: >
       sh -c "
       apk add --no-cache gettext &&
@@ -67,31 +53,32 @@ services:
       else
         export LOG_REQUESTS_DIRECTIVE='access_log off;'
       fi &&
-      envsubst '$${DOMAIN} $${MAX_BODY_SIZE} $${LOG_REQUESTS_DIRECTIVE}' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf &&
+      envsubst '$${DOMAIN} $${LOG_REQUESTS_DIRECTIVE}' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf &&
       echo 'Testing nginx configuration...' &&
       nginx -t &&
       echo 'Starting nginx...' &&
       nginx -g 'daemon off;'
       "
+    depends_on:
+      - videocutter
     restart: unless-stopped
 
-  # Certbot for SSL certificates with Cloudflare DNS and auto-renewal
+  # Certbot for SSL certificates (production mode only)
   certbot:
     image: certbot/dns-cloudflare:latest
     container_name: videocutter-certbot
     profiles:
       - production  # Only start with --profile production
     environment:
-      - DOMAIN=${DOMAIN:-videocutter.local}
-      - EMAIL=${SSL_EMAIL:-admin@${DOMAIN:-videocutter.local}}
+      - DOMAIN=${DOMAIN:-localhost}
+      - EMAIL=${SSL_EMAIL:-admin@${DOMAIN:-localhost}}
     volumes:
       - ./ssl:/etc/letsencrypt
       - ./certbot-data:/var/www/certbot
       - ./cloudflare.ini:/etc/letsencrypt/cloudflare.ini:ro
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./certbot-data/certbot-renewer.sh:/usr/local/bin/certbot-renewer.sh:ro
     entrypoint: ["/bin/sh"]
     command: ["/usr/local/bin/certbot-renewer.sh"]
     restart: unless-stopped
     depends_on:
-      - nginx-lb
+      - nginx
