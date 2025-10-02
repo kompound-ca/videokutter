@@ -168,7 +168,7 @@
                         <div class="progress-bar">
                             <div class="progress-fill" id="cut-progress-fill" style="min-width: 40px; width: 40px">0%</div>
                         </div>
-                        <p style="text-align: center; margin-top: 0.5rem; color: #4a5568;" id="cut-status">Processing...</p>
+                        <p class="progress-status" id="cut-status">Processing...</p>
                     </div>
                     
                     <div id="cut-message" class="hidden"></div>
@@ -203,9 +203,9 @@
             </div>
             <div class="modal-body">
                 <!-- Dynamic Storage Status -->
-                <div style="background: #f7fafc; padding: 1rem; border-radius: 5px; margin-bottom: 1rem;" id="storage-quota-info">
-                    <h3 style="margin-top: 0; color: #2d3748;">Current Browser Storage Limits</h3>
-                    <div id="quota-details" style="font-size: 0.9rem; color: #4a5568;">
+                <div class="modal-storage-info" id="storage-quota-info">
+                    <h3>Current Browser Storage Limits</h3>
+                    <div id="quota-details">
                         Loading storage information...
                     </div>
                 </div>
@@ -227,9 +227,9 @@
                 </ul>
 
                 
-                <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
-                    <h3 style="color: #e53e3e; margin-bottom: 0.5rem;">Danger Zone</h3>
-                    <p style="margin-bottom: 1rem; color: #718096;">
+                <div class="modal-danger-zone">
+                    <h3>Danger Zone</h3>
+                    <p>
                         Completely remove ALL data stored by this application in your browser.
                         This includes all videos, processed videos, metadata, and settings.
                     </p>
