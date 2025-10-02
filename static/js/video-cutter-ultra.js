@@ -1118,7 +1118,7 @@ export class VideoCutterUltra {
             const processedData = {
                 originalId: this.selectedVideoId,
                 originalName: videoData.name,
-                name: `cut_${this.formatTime(startTime)}_to_${this.formatTime(endTime)}_${videoData.name}`.replace(/:/g, '-'),
+                name: this.generateKutName(videoData.name),
                 type: 'video/mp4',
                 size: cutVideoData.byteLength || cutVideoData.length || videoData.size,
                 startTime: this.formatTime(startTime),
@@ -1340,6 +1340,26 @@ export class VideoCutterUltra {
         const ms = Math.round((seconds % 1) * 10);
         
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${ms}`;
+    }
+
+    generateKutName(originalName) {
+    // small built-in dictionary, expand as desired
+    const words = [
+        'apple','banana','cedar','delta','echo','falcon','gizmo','harbor',
+        'island','jupiter','kappa','lima','mango','november','omega','pearl',
+        'quartz','raven','sierra','tango','umbra','vivid','willow','xeno',
+        'yonder','zephyr','fruitybaboon', 'playingwithmymonkey', 'otter', 'bear',
+        'lion', 'tiger', 'eagle', 'shark', 'whale', 'dolphin', 'panda', 'koala',
+        'platypus', 'narwhal', 'unicorn', 'dragon', 'phoenix', 'griffin',
+        'pegasus', 'hydra', 'cerberus', 'minotaur', 'sphinx', 'chimera',
+        'kompound', 'ngk', 'smile', 'happy', 'sunny', 'breezy', 'cloudy', 'stormy'
+    ];
+    const word = words[Math.floor(Math.random() * words.length)];
+    // 5 random digits, leading digit won't be zero
+    const digits = String(Math.floor(10000 + Math.random() * 90000));
+    // preserve extension from original name, default to .mp4
+    const ext = (originalName && originalName.match(/\.[^.]+$/)?.[0]) || '.mp4';
+    return `${word}_${digits}_kut${ext}`;
     }
     
     parseTimeString(timeStr) {
