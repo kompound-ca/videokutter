@@ -1470,29 +1470,21 @@ export class VideoCutterUltra {
         
         // Use DocumentFragment for better performance
         const fragment = document.createDocumentFragment();
-
-        // safe HTML-escape helper (place inside refreshProcessed, before processed.forEach)
-        const esc = (s) => {
-        if (s === undefined || s === null) return '';
-        return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        };
         
         processed.forEach(video => {
             const item = document.createElement('li');
             item.className = 'processed-item';
-            item.innerHTML = `
-                <div class="processed-info">
-                    <div class="processed-name">${esc(video.name)}</div>
-                    <div class="processed-meta">
-                        Duration: ${esc(video.duration)} (${esc(video.startTime)} - ${esc(video.endTime)})<br>
-                        Size: ${this.formatBytes(video.size)} | 
-                        Processed: ${new Date(video.timestamp).toLocaleString()}
-                        ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}
+                item.innerHTML = `
+                    <div class="processed-info">
+                        <div class="processed-name">${video.name}</div>
+                        <div class="processed-meta">
+                            Duration: ${video.duration} (${video.startTime} - ${video.endTime})<br>
+                            Size: ${this.formatBytes(video.size)} | 
+                            Processed: ${new Date(video.timestamp).toLocaleString()}
+                            ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}
+                        </div>
+                        ${video.originalName ? `<div class="processed-original">Original File Name: ${video.originalName}</div>` : ''}
                     </div>
-                    ${video.originalName ? `<div class="processed-original">Original File Name: ${esc(video.originalName)}</div>` : ''}
                 </div>
                 <div class="video-actions">
                     <button class="btn btn-success" onclick="cutter.downloadProcessed(${video.id})">Download</button>
