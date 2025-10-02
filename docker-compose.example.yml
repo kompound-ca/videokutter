@@ -2,6 +2,10 @@ networks:
   videocutter_network:
     driver: bridge
 
+volumes:
+  temp:
+    driver: local
+
 services:
   videocutter:
     build:
