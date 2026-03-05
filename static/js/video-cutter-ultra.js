@@ -154,7 +154,7 @@ export class VideoCutterUltra {
             // Snap the toggle back to reflect actual state, and guide the user correctly.
             this.showStorageMessage(
                 'Persistent storage is a browser permission — it cannot be revoked by the app. ' +
-                'To disable it: click the lock icon in the address bar, open Site settings, and reset permissions.',
+                'To disable it: click the site controls icon in the address bar (lock, shield, or tune icon depending on your browser) \u2192 Site settings \u2192 Reset permissions.',
                 'info'
             );
         }
@@ -1365,7 +1365,7 @@ export class VideoCutterUltra {
             '\u2022 All processed/cut videos\n' +
             '\u2022 All settings and metadata\n\n' +
             'Note: the persistent storage PERMISSION is a browser-level grant and will NOT be cleared here. ' +
-            'To revoke it, click the lock icon in the address bar \u2192 Site settings \u2192 Reset permissions.\n\n' +
+            'To revoke it: click the site controls icon in the address bar (lock, shield, or tune icon depending on your browser) \u2192 Site settings \u2192 Reset permissions.\n\n' +
             'This cannot be undone. Continue?'
         );
         if (!confirmed) return;
@@ -1421,7 +1421,7 @@ export class VideoCutterUltra {
             alert(
                 'All app data has been cleared.\n\n' +
                 'Note: the persistent storage permission is a browser-level grant and is still active. ' +
-                'To revoke it: click the lock icon in the address bar \u2192 Site settings \u2192 Reset permissions.'
+                'To revoke it: click the site controls icon in the address bar (lock, shield, or tune icon depending on your browser) \u2192 Site settings \u2192 Reset permissions.'
             );
             window.location.reload();
 
