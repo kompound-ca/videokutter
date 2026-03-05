@@ -204,7 +204,7 @@ export class VideoCutterUltra {
 
     async initDB() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open
+            const request = indexedDB.open('VideoCutterUltraDB', 1);
             
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
