@@ -150,7 +150,13 @@ export class VideoCutterUltra {
                 this.showStorageMessage('Failed to enable persistent storage: ' + error.message, 'error');
             }
         } else {
-            this.showStorageMessage('To disable persistent storage, clear your browser data for this site.', 'info');
+            // navigator.storage.persist() has no revoke API — the grant is a browser permission.
+            // Snap the toggle back to reflect actual state, and guide the user correctly.
+            this.showStorageMessage(
+                'Persistent storage is a browser permission — it cannot be revoked by the app. ' +
+                'To disable it: click the lock icon in the address bar, open Site settings, and reset permissions.',
+                'info'
+            );
         }
 
         this.updateStorageModeDisplay();
@@ -1358,6 +1364,8 @@ export class VideoCutterUltra {
             '\u2022 All uploaded videos\n' +
             '\u2022 All processed/cut videos\n' +
             '\u2022 All settings and metadata\n\n' +
+            'Note: the persistent storage PERMISSION is a browser-level grant and will NOT be cleared here. ' +
+            'To revoke it, click the lock icon in the address bar \u2192 Site settings \u2192 Reset permissions.\n\n' +
             'This cannot be undone. Continue?'
         );
         if (!confirmed) return;
@@ -1410,7 +1418,11 @@ export class VideoCutterUltra {
             this.persistentStorage = false;
             this.hideStorageInfo();
 
-            alert('All storage cleared. The page will now reload.');
+            alert(
+                'All app data has been cleared.\n\n' +
+                'Note: the persistent storage permission is a browser-level grant and is still active. ' +
+                'To revoke it: click the lock icon in the address bar \u2192 Site settings \u2192 Reset permissions.'
+            );
             window.location.reload();
 
         } catch (error) {
