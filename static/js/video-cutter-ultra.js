@@ -1266,24 +1266,29 @@ export class VideoCutterUltra {
             const availGB   = ((estimate.quota - estimate.usage) / (1024 * 1024 * 1024)).toFixed(2);
             const pctUsed   = ((estimate.usage / estimate.quota) * 100).toFixed(2);
 
-            // Browser-specific note about quota behaviour
-            const isChromium = ['Brave', 'Chrome', 'Microsoft Edge'].includes(browserName);
+            // Browser-specific + state-aware combined note
             let quotaNote = '';
             if (browserName === 'Brave') {
-                quotaNote = '<strong>Brave restriction:</strong> Brave enforces a hard ~2 GB per-origin storage cap as a privacy/anti-fingerprinting measure. ' +
-                    'Enabling persistent storage will prevent eviction but cannot increase this cap. ' +
-                    'For large videos, use Firefox instead — it grants significantly more quota when persistence is allowed.';
-            } else if (browserName === 'Microsoft Edge') {
-                quotaNote = `${browserName} sets this quota based on your available disk space. ` +
-                    'Persistent storage prevents eviction but does not change the quota number.';
-            } else if (isChromium) {
-                quotaNote = `${browserName} sets this quota based on your available disk space. ` +
-                    'Persistent storage prevents eviction but does not change the quota number.';
+                quotaNote = '<strong>Brave:</strong> Brave enforces a hard ~2 GB per-origin storage cap as a privacy measure — persistent storage cannot raise this limit. ' +
+                    (isPersistent
+                        ? 'Persistent storage is active, so your data is protected from eviction within that cap.'
+                        : 'Without persistent storage, Brave may evict your data when space is low. Enable it above to protect your videos (the 2 GB cap still applies).') +
+                    ' For larger video libraries, Firefox is recommended.';
+            } else if (browserName === 'Microsoft Edge' || browserName === 'Chrome') {
+                quotaNote = `<strong>${browserName}:</strong> Quota is based on available disk space (~80% of free space). ` +
+                    (isPersistent
+                        ? 'Persistent storage is active — your data will not be auto-cleared by the browser.'
+                        : `Without persistent storage, ${browserName} may auto-clear this site's data when disk space is low. Enable it above to protect your videos.`);
             } else if (browserName === 'Firefox') {
-                quotaNote = 'Firefox limits quota to ~10% of disk without persistence. ' +
-                    'Enabling persistent storage (and accepting the browser prompt) can significantly increase the available quota.';
+                quotaNote = '<strong>Firefox:</strong> ' +
+                    (isPersistent
+                        ? 'Persistent storage is active — Firefox can allocate up to ~50% of available disk space.'
+                        : 'Without persistence, Firefox limits storage to ~10% of disk. Enabling persistent storage (Firefox will show a permission prompt) can significantly increase your available quota.');
             } else if (browserName === 'Safari') {
-                quotaNote = 'Safari starts with a 1 GB quota and may prompt to increase it when storage is needed.';
+                quotaNote = '<strong>Safari:</strong> ' +
+                    (isPersistent
+                        ? 'Persistent storage is active. Safari starts at 1 GB and may increase the quota as needed.'
+                        : 'Safari starts with a 1 GB quota and may prompt to increase it as storage fills. Enable persistent storage above to prevent auto-clearing.');
             }
 
             quotaDetailsEl.innerHTML = `
@@ -1297,8 +1302,7 @@ export class VideoCutterUltra {
                     <div><strong>Available:</strong> ${availGB} GB</div>
                     <div><strong>Videos:</strong> ${await this.getVideoCount()}</div>
                 </div>
-                ${quotaNote ? `<p style="margin-top: 0.75rem; padding: 0.5rem; background: #f0f4ff; border-left: 3px solid #667eea; font-size: 0.85rem;">${quotaNote}</p>` : ''}
-                ${!isPersistent ? '<p style="margin-top: 0.5rem; padding: 0.5rem; background: #fff5f5; border-left: 3px solid #f6ad55; font-size: 0.85rem;"><strong>Tip:</strong> Enable persistent storage above to prevent the browser from auto-clearing your videos.</p>' : ''}
+                ${quotaNote ? `<p style="margin-top: 0.75rem; padding: 0.5rem; background: #f0f4ff; border-left: 3px solid #667eea; font-size: 0.85rem;">${quotaNote}${isPersistent ? ' <em>To revoke: click the site controls icon in the address bar (lock, shield, or tune icon) &rarr; Site settings &rarr; Reset permissions.</em>' : ''}</p>` : ''}
             `;
 
             this.updateStorageInfo();
