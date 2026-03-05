@@ -18,49 +18,31 @@ A modern, browser-based video cutting tool that processes videos entirely client
 ## Requirements
 
 - Modern web browser with WebAssembly support (Chrome, Firefox, Edge, Safari)
-- Go 1.19+ (for running the server)
+- Go 1.22+ (for running the server)
 - Docker (optional, for containerized deployment)
 
 ## Quick Start
 
 ### Local Development
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/kompound-ca/videokutter.git
 cd videokutter
-```
-
-2. Run with Go:
-```bash
 go mod download
 go run main.go
 ```
 
-3. Access the application:
-```
-http://localhost:8080
-```
+Access at `http://localhost:8080`
 
-### Docker Deployment
+### Docker
 
-1. Clone and configure:
 ```bash
-git clone https://github.com/kompound-ca/videokutter.git
-cd videokutter
 cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
-```
-
-2. Build and run:
-```bash
 docker compose up -d --build
 ```
 
-3. Access the application:
-```
-http://localhost:8080
-```
+The server emits plain HTTP on the configured port. Place it behind your own reverse proxy for TLS.
 
 ## Usage
 
@@ -95,11 +77,9 @@ To enable persistent storage, toggle the switch in the Storage Settings section.
 Environment variables (`.env`):
 
 ```env
-PORT=8080                    # Server port
-LOG_LEVEL=info              # Logging level (debug, info, warn, error)
-LOG_REQUESTS=true           # Enable request logging
-COMPOSE_PROFILES=production   # Set to "production" for production mode with nginx and SSL certificates. Set to "development" for local development without SSL/nginx (direct Go server access).
-DOMAIN=videocutter.local   # DOMAIN specifies the domain name used for SSL certificates and nginx configuration
+PORT=8080            # Server port
+LOG_LEVEL=error      # Logging level (debug, info, warn, error)
+LOG_REQUESTS=false   # Enable HTTP request logging (true/false)
 ```
 
 ## License

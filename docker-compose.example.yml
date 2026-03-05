@@ -2,10 +2,6 @@ networks:
   videocutter_network:
     driver: bridge
 
-volumes:
-  temp:
-    driver: local
-
 services:
   videocutter:
     build:
@@ -13,16 +9,13 @@ services:
       dockerfile: Dockerfile
     container_name: videocutter
     ports:
-      - "${PORT:-8080}:8080"  # Direct access for development
+      - "${PORT:-8080}:8080"
     networks:
       - videocutter_network
     environment:
       - PORT=8080
       - LOG_REQUESTS=${LOG_REQUESTS:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - DOMAIN=${DOMAIN:-localhost}
-    volumes:
-      - temp:/app/temp
+      - LOG_LEVEL=${LOG_LEVEL:-error}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://0.0.0.0:8080/api/health"]
       interval: 30s
@@ -30,59 +23,3 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
-
-  # Nginx reverse proxy (production mode only)
-  nginx:
-    image: nginx:alpine
-    container_name: videocutter-nginx
-    profiles:
-      - production  # Only start with --profile production
-    ports:
-      - "80:80"
-      - "443:443"
-    networks:
-      - videocutter_network
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
-      - LOG_REQUESTS=${LOG_REQUESTS:-false}
-    volumes:
-      - ./nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
-      - ./ssl:/etc/nginx/ssl:ro
-      - ./certbot-data:/var/www/certbot:ro
-    command: >
-      sh -c "
-      apk add --no-cache gettext &&
-      if [ \"$${LOG_REQUESTS}\" = \"true\" ]; then
-        export LOG_REQUESTS_DIRECTIVE='access_log /var/log/nginx/access.log;'
-      else
-        export LOG_REQUESTS_DIRECTIVE='access_log off;'
-      fi &&
-      envsubst '$${DOMAIN} $${LOG_REQUESTS_DIRECTIVE}' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf &&
-      echo 'Testing nginx configuration...' &&
-      nginx -t &&
-      echo 'Starting nginx...' &&
-      nginx -g 'daemon off;'
-      "
-    depends_on:
-      - videocutter
-    restart: unless-stopped
-
-  # Certbot for SSL certificates (production mode only)
-  certbot:
-    image: certbot/dns-cloudflare:latest
-    container_name: videocutter-certbot
-    profiles:
-      - production  # Only start with --profile production
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
-      - EMAIL=${SSL_EMAIL:-admin@${DOMAIN:-localhost}}
-    volumes:
-      - ./ssl:/etc/letsencrypt
-      - ./certbot-data:/var/www/certbot
-      - ./cloudflare.ini:/etc/letsencrypt/cloudflare.ini:ro
-      - ./certbot-data/certbot-renewer.sh:/usr/local/bin/certbot-renewer.sh:ro
-    entrypoint: ["/bin/sh"]
-    command: ["/usr/local/bin/certbot-renewer.sh"]
-    restart: unless-stopped
-    depends_on:
-      - nginx

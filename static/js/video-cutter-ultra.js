@@ -71,97 +71,32 @@ const logger = new Logger();
 
 export class VideoCutterUltra {
     constructor() {
-        // STORAGE ARCHITECTURE:
-        // - Videos are stored on DISK via IndexedDB (not in memory)
-        // - IndexedDB writes to the browser's storage directory on the user's disk
-        // - Only temporary memory usage is for blob URLs when videos are being viewed/processed
-        // - Blob URLs are cleaned up after use to free memory
-        
-        this.db = null; // IndexedDB connection (disk storage)
+        this.db = null;
         this.selectedVideoId = null;
         this.selectedVideoMeta = null;
         this.currentTab = 'upload';
         this.ffmpeg = null;
         this.ffmpegLoaded = false;
-        this.ffmpegBusy = false; // Lock to prevent concurrent FFmpeg operations
-        this.ffmpegQueue = []; // Queue for FFmpeg operations
+        this.ffmpegBusy = false;
         this.persistentStorage = false;
-        this.worker = null;
-        this.videoCache = new Map(); // Cache for blob URLs (temporary memory usage)
+        this.videoCache = new Map();
         this.initializeApp();
     }
     
     async initializeApp() {
-        logger.log('Initializing Ultra-Optimized Video Cutter...');
-        
         try {
-            // Initialize worker for heavy operations
-            this.initWorker();
-            
-            // Check for persistent storage status
             await this.checkPersistentStorage();
-            
-            // Initialize database
             await this.initDB();
-            
-            // Bind events
             this.bindEvents();
-            
-            // Update UI asynchronously
             requestAnimationFrame(() => {
                 this.updateStorageInfo();
                 this.refreshLibrary();
                 this.refreshProcessed();
             });
-            
-            // Initialize FFmpeg in background
             this.initFFmpegAsync();
-            
-            logger.log('Initialization complete');
         } catch (error) {
             logger.error('Failed to initialize:', error);
             this.showError('Failed to initialize app: ' + error.message);
-        }
-    }
-    
-    initWorker() {
-        try {
-            this.worker = new Worker('/js/video-worker.js');
-            
-            this.worker.addEventListener('message', (e) => {
-                this.handleWorkerMessage(e.data);
-            });
-            
-            this.worker.addEventListener('error', (error) => {
-                logger.error('Worker error:', error);
-            });
-        } catch (error) {
-            logger.warn('Failed to initialize worker, falling back to main thread:', error);
-        }
-    }
-    
-    handleWorkerMessage(message) {
-        const { type, data, id, url, error } = message;
-        
-        switch (type) {
-            case 'FILE_READ_COMPLETE':
-                // Handle file read completion
-                this.onFileReadComplete(id, data);
-                break;
-                
-            case 'BLOB_URL_CREATED':
-                // Handle blob URL creation
-                this.onBlobUrlCreated(id, url);
-                break;
-                
-            case 'PROGRESS':
-                // Handle progress updates
-                this.updateProgress(id, message.progress);
-                break;
-                
-            case 'ERROR':
-                logger.error('Worker error:', error);
-                break;
         }
     }
     
@@ -234,32 +169,19 @@ export class VideoCutterUltra {
     
     async initFFmpeg() {
         try {
-            logger.log('Loading FFmpeg.wasm in background...');
-            
-            if (typeof window.FFmpeg === 'undefined') {
+            if (typeof window.FFmpeg === 'undefined' || !window.FFmpeg.createFFmpeg) {
                 logger.warn('FFmpeg not available, using simulation mode');
                 return;
             }
-            
             const { createFFmpeg, fetchFile } = window.FFmpeg;
-            
-            if (!createFFmpeg) {
-                logger.warn('createFFmpeg not found');
-                return;
-            }
-            
-            this.ffmpeg = createFFmpeg({ 
+            this.ffmpeg = createFFmpeg({
                 log: false,
                 corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
                 mainName: 'main'
             });
-            
             this.fetchFile = fetchFile || this.createFetchFileFallback();
-            
             await this.ffmpeg.load();
             this.ffmpegLoaded = true;
-            logger.log('FFmpeg.wasm loaded successfully');
-            
         } catch (error) {
             logger.error('Failed to load FFmpeg.wasm:', error);
             this.ffmpegLoaded = false;
@@ -267,54 +189,22 @@ export class VideoCutterUltra {
     }
     
     async cleanupFFmpegFiles() {
-        // Clean up any existing files in FFmpeg's filesystem
         if (!this.ffmpeg || !this.ffmpegLoaded) return;
-        
         try {
             const files = this.ffmpeg.FS('readdir', '/');
             for (const file of files) {
                 if (file !== '.' && file !== '..' && file !== 'tmp' && file !== 'home' && file !== 'dev' && file !== 'proc') {
                     try {
                         const stats = this.ffmpeg.FS('stat', file);
-                        if (stats.mode & 0o100000) { // Check if it's a regular file
-                            this.ffmpeg.FS('unlink', file);
-                            logger.debug(`Cleaned up file: ${file}`);
-                        }
-                    } catch (e) {
-                        // Ignore errors for system directories
-                    }
+                        if (stats.mode & 0o100000) this.ffmpeg.FS('unlink', file);
+                    } catch (e) { /* ignore system dirs */ }
                 }
             }
         } catch (e) {
-            logger.debug('FFmpeg cleanup error (non-critical):', e);
+            logger.debug('FFmpeg cleanup error:', e);
         }
     }
     
-    resetFFmpegState() {
-        // Force reset FFmpeg state in case of errors
-        this.ffmpegBusy = false;
-        this.cleanupFFmpegFiles();
-        logger.log('FFmpeg state reset');
-    }
-    
-    async terminateFFmpeg() {
-        // Forcefully terminate FFmpeg if it's running
-        if (this.ffmpeg && this.ffmpeg.isLoaded()) {
-            try {
-                // Try to exit FFmpeg gracefully
-                this.ffmpeg.exit();
-                logger.log('FFmpeg terminated');
-            } catch (e) {
-                logger.debug('FFmpeg exit error (may be normal):', e);
-            }
-            
-            // Reset the busy flag
-            this.ffmpegBusy = false;
-            
-            // Reinitialize FFmpeg
-            await this.initFFmpeg();
-        }
-    }
     
     createFetchFileFallback() {
         return async (input) => {
@@ -734,8 +624,9 @@ export class VideoCutterUltra {
                 card.classList.add('selected');
             }
             
+            const name = this.escapeHtml(video.name);
             card.innerHTML = `
-                <div class="video-name" title="${video.name}">${video.name}</div>
+                <div class="video-name" title="${name}">${name}</div>
                 <div class="video-meta">
                     Size: ${this.formatBytes(video.size)}<br>
                     Uploaded: ${new Date(video.timestamp).toLocaleString()}
@@ -797,36 +688,20 @@ export class VideoCutterUltra {
     
     async loadVideoForCutting(id) {
         try {
-            // Check cache first
             let blobUrl = this.videoCache.get(id);
-            
             if (!blobUrl) {
-                // Load video data
                 const videoData = await this.getVideoData(id);
-                if (!videoData) {
-                    throw new Error('Video data not found');
-                }
-                
-                // Create blob URL
+                if (!videoData) throw new Error('Video data not found');
                 const blob = new Blob([videoData.data], { type: videoData.type });
                 blobUrl = URL.createObjectURL(blob);
-                
-                // Cache it
                 this.videoCache.set(id, blobUrl);
             }
-            
-            // Load into video player
             const cutPreview = document.getElementById('cut-preview');
             if (cutPreview) {
-                // Reset time inputs before loading new video
                 const startTimeEl = document.getElementById('start-time');
-                const endTimeEl = document.getElementById('end-time');
                 if (startTimeEl) startTimeEl.value = this.formatTime(0);
-                // Don't set end time here - wait for video metadata to load
-                
                 cutPreview.src = blobUrl;
             }
-            
         } catch (error) {
             logger.error('Error loading video for cutting:', error);
             this.showError('Failed to load video for cutting');
@@ -835,20 +710,14 @@ export class VideoCutterUltra {
     
     async previewVideo(id) {
         try {
-            // Check cache first
             let blobUrl = this.videoCache.get(id);
-            
             if (!blobUrl) {
                 const videoData = await this.getVideoData(id);
                 if (!videoData) return;
-                
                 const blob = new Blob([videoData.data], { type: videoData.type });
                 blobUrl = URL.createObjectURL(blob);
-                
-                // Cache it
                 this.videoCache.set(id, blobUrl);
             }
-            
             window.open(blobUrl, '_blank');
         } catch (error) {
             logger.error('Error previewing video:', error);
@@ -872,120 +741,87 @@ export class VideoCutterUltra {
     
     async clearAllVideos() {
         if (!confirm('Delete ALL videos? This cannot be undone!')) return;
-        
-        // Clear all stores
-        const transaction1 = this.db.transaction(['videos'], 'readwrite');
-        await transaction1.objectStore('videos').clear();
-        
-        const transaction2 = this.db.transaction(['videoMeta'], 'readwrite');
-        await transaction2.objectStore('videoMeta').clear();
-        
-        // Clear cache
+
+        const t1 = this.db.transaction(['videos'], 'readwrite');
+        await t1.objectStore('videos').clear();
+        const t2 = this.db.transaction(['videoMeta'], 'readwrite');
+        await t2.objectStore('videoMeta').clear();
+
         this.videoCache.forEach(url => URL.revokeObjectURL(url));
         this.videoCache.clear();
-        
         this.selectedVideoId = null;
         this.selectedVideoMeta = null;
-        
+
         await this.updateStorageInfo();
         await this.refreshLibrary();
-        
         document.getElementById('cut-no-video').classList.remove('hidden');
         document.getElementById('cut-interface').classList.add('hidden');
     }
     
-    // Complete cut video implementation
     async cutVideo() {
         if (!this.selectedVideoId) {
             this.showError('Please select a video first');
             return;
         }
-        
+
         const startTime = this.parseTimeString(document.getElementById('start-time').value);
         const endTime = this.parseTimeString(document.getElementById('end-time').value);
-        
+
         if (endTime <= startTime) {
             this.showError('End time must be greater than start time');
             return;
         }
-        
+
         const progressContainer = document.getElementById('cut-progress');
         const progressFill = document.getElementById('cut-progress-fill');
         const cutStatus = document.getElementById('cut-status');
         const cutButton = document.getElementById('cut-button');
-        
+
         if (progressContainer) progressContainer.classList.remove('hidden');
         if (cutButton) cutButton.disabled = true;
-        
-        // Initialize progress bar to 0%
         if (progressFill) {
-            progressFill.style.width = '1%'; // Start with minimum width so text is visible
+            progressFill.style.width = '1%';
             progressFill.textContent = '0%';
         }
-        
+
         try {
-            // Get video data for cutting
             const videoData = await this.getVideoData(this.selectedVideoId);
-            if (!videoData) {
-                throw new Error('Video data not found');
-            }
-            
+            if (!videoData) throw new Error('Video data not found');
+
             let cutVideoData;
-            
+
             if (this.ffmpegLoaded && this.ffmpeg && this.fetchFile) {
-                // Check if FFmpeg is busy from a previous operation
                 if (this.ffmpegBusy) {
-                    // This shouldn't happen with reinitialization, but handle it gracefully
-                    logger.warn('FFmpeg is busy, waiting briefly...');
                     if (cutStatus) cutStatus.textContent = 'Waiting for previous operation...';
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    // If still busy, the previous operation might have failed
-                    if (this.ffmpegBusy) {
-                        this.ffmpegBusy = false;
-                        logger.warn('Cleared stuck busy flag');
-                    }
+                    if (this.ffmpegBusy) this.ffmpegBusy = false;
                 }
-                
-                // Set busy flag
+
                 this.ffmpegBusy = true;
-                logger.debug('Starting FFmpeg operation');
-                
-                // Use actual FFmpeg.wasm
                 if (cutStatus) cutStatus.textContent = 'Preparing FFmpeg...';
-                logger.log('Using FFmpeg.wasm for video cutting');
-                
-                // Set up progress tracking
+
                 this.ffmpeg.setProgress(({ ratio }) => {
                     const percent = Math.round(ratio * 100);
                     if (progressFill) {
-                        // Ensure minimum width of 1% so text is always visible
                         progressFill.style.width = Math.max(1, percent) + '%';
                         progressFill.textContent = percent + '%';
                     }
                 });
-                
+
                 try {
-                    // Clean up any existing files first using our cleanup method
                     await this.cleanupFFmpegFiles();
-                    
-                    // Process with FFmpeg
+
                     const ext = videoData.name.match(/\.[^.]+$/)?.[0] || '.mp4';
                     const inputName = 'input' + ext;
                     const outputName = 'output.mp4';
-                    
-                    // Convert ArrayBuffer to Uint8Array
                     const inputData = new Uint8Array(videoData.data);
-                    
+
                     if (cutStatus) cutStatus.textContent = 'Loading video into FFmpeg...';
                     this.ffmpeg.FS('writeFile', inputName, inputData);
-                    
                     if (cutStatus) cutStatus.textContent = 'Cutting video...';
-                    
-                    // Try with stream copy first (fastest)
+
+                    // Try stream copy first (lossless, fastest)
                     let success = false;
-                    let streamCopyError = null;
-                    
                     try {
                         await this.ffmpeg.run(
                             '-i', inputName,
@@ -993,47 +829,25 @@ export class VideoCutterUltra {
                             '-to', endTime.toString(),
                             '-c', 'copy',
                             '-avoid_negative_ts', 'make_zero',
-                            '-y', // Force overwrite output file
-                            outputName
+                            '-y', outputName
                         );
-                        
-                        // Check if output file exists and has content
-                        try {
-                            const outputData = this.ffmpeg.FS('readFile', outputName);
-                            if (outputData && outputData.length > 0) {
-                                success = true;
-                                cutVideoData = outputData.buffer || outputData;
-                            }
-                        } catch (e) {
-                            logger.log('Output file check failed after stream copy');
-                            streamCopyError = e;
+                        const outputData = this.ffmpeg.FS('readFile', outputName);
+                        if (outputData && outputData.length > 0) {
+                            success = true;
+                            cutVideoData = outputData.buffer || outputData;
                         }
                     } catch (e) {
-                        logger.debug('Stream copy failed:', e);
-                        streamCopyError = e;
-                        
-                        // Just log the error, we'll try re-encoding
+                        logger.debug('Stream copy failed, will re-encode:', e);
                     }
-                    
-                    // If stream copy failed, try re-encoding (slower but more compatible)
+
+                    // Fall back to re-encode if stream copy failed
                     if (!success) {
-                        logger.log('Stream copy failed, attempting re-encode...');
-                        if (cutStatus) cutStatus.textContent = 'Re-encoding video (this may take longer)...';
-                        
-                        // Clean up failed output file if it exists
+                        if (cutStatus) cutStatus.textContent = 'Re-encoding video...';
                         try {
                             const files = this.ffmpeg.FS('readdir', '/');
-                            if (files.includes(outputName)) {
-                                this.ffmpeg.FS('unlink', outputName);
-                                logger.debug('Cleaned up failed output file');
-                            }
-                        } catch (e) {
-                            logger.debug('Cleanup before re-encode:', e);
-                        }
-                        
-                        // Wait a moment to ensure FFmpeg is ready
+                            if (files.includes(outputName)) this.ffmpeg.FS('unlink', outputName);
+                        } catch (e) { /* ignore */ }
                         await new Promise(resolve => setTimeout(resolve, 100));
-                        
                         try {
                             await this.ffmpeg.run(
                                 '-i', inputName,
@@ -1042,79 +856,52 @@ export class VideoCutterUltra {
                                 '-c:v', 'libx264',
                                 '-preset', 'ultrafast',
                                 '-c:a', 'aac',
-                                '-y', // Force overwrite output file
-                                outputName
+                                '-y', outputName
                             );
-                            
                             const data = this.ffmpeg.FS('readFile', outputName);
                             cutVideoData = data.buffer || data;
                         } catch (reencodeError) {
-                            logger.error('Re-encoding also failed:', reencodeError);
-                            // Both methods failed - video format might not be supported
-                            throw new Error(`Video processing failed. The video format may not be supported. Please try a different video.`);
+                            throw new Error('Video processing failed. The video format may not be supported.');
                         }
                     }
-                    
+
                     if (cutStatus) cutStatus.textContent = 'Saving cut video...';
-                    
-                    logger.log('Video cut successfully with FFmpeg');
-                    
+
                 } catch (ffmpegError) {
-                    logger.error('FFmpeg processing error:', ffmpegError);
-                    // Check if it's an exit(0) which might mean success
-                    if (ffmpegError.message && ffmpegError.message.includes('exit(0)')) {
-                        // Try to read the output file anyway
+                    // exit(0) can occur when FFmpeg succeeds but throws anyway
+                    if (ffmpegError.message?.includes('exit(0)')) {
                         try {
                             const data = this.ffmpeg.FS('readFile', 'output.mp4');
                             if (data && data.length > 0) {
                                 cutVideoData = data.buffer || data;
-                                logger.log('FFmpeg exited with 0, but output file exists');
                             } else {
-                                throw new Error('FFmpeg completed but no output was produced. The video format may not be supported.');
+                                throw new Error('FFmpeg produced no output.');
                             }
                         } catch (e) {
-                            throw new Error('FFmpeg processing failed. The video codec may not be supported for stream copying.');
+                            throw new Error('FFmpeg processing failed. The codec may not be supported for stream copying.');
                         }
                     } else {
                         throw new Error('FFmpeg processing failed: ' + ffmpegError.message);
                     }
                 } finally {
-                    // CRITICAL: Always clean up files and reset state
-                    try {
-                        await this.cleanupFFmpegFiles();
-                    } catch (cleanupError) {
-                        logger.debug('Cleanup error after processing:', cleanupError);
-                    }
-                    
-                    // Reset progress handler
-                    if (this.ffmpeg && this.ffmpeg.setProgress) {
-                        this.ffmpeg.setProgress(() => {}); // Clear progress handler
-                    }
-                    
-                    // Always clear the busy flag as the last step
+                    try { await this.cleanupFFmpegFiles(); } catch (e) { /* ignore */ }
+                    if (this.ffmpeg?.setProgress) this.ffmpeg.setProgress(() => {});
                     this.ffmpegBusy = false;
-                    logger.debug('FFmpeg busy flag cleared');
                 }
-                
+
             } else {
-                // Fallback simulation
+                // FFmpeg not loaded - simulation mode
                 if (cutStatus) cutStatus.textContent = 'Processing video (simulation mode)...';
-                logger.log('FFmpeg not available, using simulation');
-                
-                // Animate progress
                 for (let i = 0; i <= 100; i += 10) {
                     if (progressFill) {
-                        // Ensure minimum width of 1% so text is always visible
                         progressFill.style.width = Math.max(1, i) + '%';
                         progressFill.textContent = i + '%';
                     }
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
-                
                 cutVideoData = videoData.data;
             }
-            
-            // Store processed video
+
             const processedData = {
                 originalId: this.selectedVideoId,
                 originalName: videoData.name,
@@ -1128,52 +915,30 @@ export class VideoCutterUltra {
                 timestamp: new Date().toISOString(),
                 isActuallyCut: this.ffmpegLoaded
             };
-            
+
             await this.storeProcessedVideo(processedData);
-            
-            // Success
+
             if (progressContainer) progressContainer.classList.add('hidden');
             const modeText = this.ffmpegLoaded ? ' (with FFmpeg)' : ' (simulation)';
             this.showSuccess(`Video cut successfully${modeText}! Check the Processed tab.`);
-            
-            // IMPORTANT: Reinitialize FFmpeg after successful cut to ensure clean state
+
+            // Reinitialize FFmpeg after a cut to ensure a clean state for next operation
             if (this.ffmpegLoaded && this.ffmpeg) {
-                logger.log('Reinitializing FFmpeg for clean state...');
-                try {
-                    // Exit current FFmpeg instance
-                    if (this.ffmpeg.isLoaded && this.ffmpeg.isLoaded()) {
-                        try {
-                            this.ffmpeg.exit();
-                        } catch (e) {
-                            logger.debug('FFmpeg exit (expected):', e);
-                        }
-                    }
-                    
-                    // Clear the instance
-                    this.ffmpeg = null;
-                    this.ffmpegLoaded = false;
-                    
-                    // Reinitialize FFmpeg in the background
-                    setTimeout(() => {
-                        this.initFFmpeg().then(() => {
-                            logger.log('FFmpeg reinitialized and ready for next operation');
-                        }).catch(err => {
-                            logger.error('Failed to reinitialize FFmpeg:', err);
-                        });
-                    }, 100);
-                } catch (reinitError) {
-                    logger.error('Error during FFmpeg reinitialization:', reinitError);
+                if (this.ffmpeg.isLoaded?.()) {
+                    try { this.ffmpeg.exit(); } catch (e) { /* expected */ }
                 }
+                this.ffmpeg = null;
+                this.ffmpegLoaded = false;
+                setTimeout(() => this.initFFmpeg().catch(err => logger.error('FFmpeg reinit failed:', err)), 100);
             }
-            
+
             await this.updateStorageInfo();
             await this.refreshProcessed();
-            
+
         } catch (error) {
             logger.error('Cut failed:', error);
             if (progressContainer) progressContainer.classList.add('hidden');
             this.showError(`Failed: ${error.message}`);
-            // Reset FFmpeg state if there was an error
             if (this.ffmpegBusy) {
                 this.ffmpegBusy = false;
                 await this.cleanupFFmpegFiles();
@@ -1442,6 +1207,15 @@ export class VideoCutterUltra {
         }
     }
     
+    escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     formatBytes(bytes, decimals = 2) {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
@@ -1474,15 +1248,17 @@ export class VideoCutterUltra {
         processed.forEach(video => {
             const item = document.createElement('li');
             item.className = 'processed-item';
-                item.innerHTML = `
+            const pname = this.escapeHtml(video.name);
+            const oname = this.escapeHtml(video.originalName);
+            item.innerHTML = `
                     <div class="processed-info">
-                        <div class="processed-name">${video.name}</div>
+                        <div class="processed-name">${pname}</div>
                         <div class="processed-meta">
                             Duration: ${video.duration} (${video.startTime} - ${video.endTime})<br>
-                            Size: ${this.formatBytes(video.size)} | 
+                            Size: ${this.formatBytes(video.size)} |
                             Processed: ${new Date(video.timestamp).toLocaleString()}
                             ${video.isActuallyCut ? ' | FFmpeg' : ' | Simulated'}<br>
-                            Original File Name: ${video.originalName}
+                            Original: ${oname}
                         </div>
                 <div class="video-actions">
                     <button class="btn btn-success" onclick="cutter.downloadProcessed(${video.id})">Download</button>

@@ -11,6 +11,15 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
+const csp = "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net; " +
+	"script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net blob:; " +
+	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+	"img-src 'self' data: blob:; " +
+	"font-src 'self' https://fonts.gstatic.com; " +
+	"media-src 'self' blob:; " +
+	"worker-src 'self' blob: https://cdn.jsdelivr.net; " +
+	"connect-src 'self' https://cdn.jsdelivr.net https://unpkg.com blob: data:;"
+
 func main() {
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -33,9 +42,16 @@ func main() {
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
-		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods: "GET,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept",
 	}))
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "SAMEORIGIN")
+		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Set("Content-Security-Policy", csp)
+		return c.Next()
+	})
 
 	// Serve static files
 	app.Static("/", "./static")
