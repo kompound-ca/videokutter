@@ -50,6 +50,8 @@
                 </div>
             </div>
             
+            <div id="storage-message" class="hidden" style="margin: 0.4rem 0 0; font-size: 0.85rem; padding: 0.4rem 0.75rem; border-radius: 4px;"></div>
+
             <!-- Storage Status Bar -->
             <div class="storage-info">
                 <div class="storage-card">
@@ -192,7 +194,7 @@
     </div>
 
     <footer>
-        <p>&copy; 2025 Kompound - Video Cutting Tool</p>
+        <p>&copy; 2026 Kompound Solutions - Video Cutting Tool</p>
     </footer>
     
     <!-- Storage Info Modal -->
@@ -222,8 +224,9 @@
                 <ul style="margin-left: 1.5rem; margin-bottom: 1rem; font-size: 0.9rem;">
                     <li>Videos saved permanently in your browser</li>
                     <li>Only you can delete the data</li>
-                    <li>May increase storage quota over time</li>
-                    <li>Browser won't auto-delete your videos</li>
+                    <li>Browser will not auto-delete your videos when space is low</li>
+                    <li>Can significantly increase your available storage quota</li>
+                    <li>Firefox will show a permission prompt to grant this</li>
                 </ul>
 
                 
@@ -278,8 +281,7 @@
         });
     </script>
     
-    <!-- Load FFmpeg from CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>
+    <script src="/js/vendor/ffmpeg.min.js"></script>
     
     <!-- Load the video cutter application -->
     <script type="module" src="js/browser-cutter.js"></script>

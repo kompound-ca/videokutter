@@ -1,5 +1,4 @@
-/* Browser Video Cutter - Integrated Styles */
-/* Combines original style.css with browser-specific features */
+/* Browser Video Cutter - styles */
 
 /* ===== CSS Variables for Light/Dark Mode ===== */
 :root {
@@ -190,15 +189,6 @@ input:checked + .toggle-slider:before {
     transform: translateX(26px);
 }
 
-/* ===== Info Banner ===== */
-.info-banner {
-    background: #e8f4f8;
-    border: 1px solid #b8e0e8;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-}
-
 /* ===== Storage Info Grid ===== */
 .storage-info {
     display: grid;
@@ -224,7 +214,7 @@ input:checked + .toggle-slider:before {
 
 .storage-card .label {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--text-muted);
     margin-top: 0.25rem;
 }
 
@@ -311,7 +301,7 @@ input:checked + .toggle-slider:before {
 
 .upload-info {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--text-muted);
     margin-top: 0.5rem;
 }
 
@@ -711,6 +701,12 @@ video {
     display: none !important;
 }
 
+.empty-state-msg {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem 0;
+}
+
 /* ===== Processed List ===== */
 .processed-list {
     list-style: none;
@@ -742,22 +738,6 @@ video {
 .processed-meta {
     font-size: 0.875rem;
     color: var(--text-muted);
-}
-
-/* ===== Spinner ===== */
-.spinner {
-    border: 3px solid var(--border-primary);
-    border-top: 3px solid var(--accent-color);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 1rem auto;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
 }
 
 /* ===== Modal Storage Info Box ===== */

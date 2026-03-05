@@ -1,9 +1,8 @@
-// Ultra-optimized Video Cutter with Lazy Loading
+// Video Cutter — browser-side processing with FFmpeg.wasm
 
-// Logging utility that respects the LOG_LEVEL configuration
 class Logger {
     constructor() {
-        this.logLevel = 'info'; // Default log level
+        this.logLevel = 'info';
         this.levels = {
             'debug': 0,
             'info': 1,
@@ -11,7 +10,6 @@ class Logger {
             'error': 3,
             'none': 4
         };
-        this.initialized = false;
         this.initLogger();
     }
 
@@ -23,10 +21,8 @@ class Logger {
                 this.logLevel = config.logLevel || 'info';
             }
         } catch (error) {
-            // If fetching config fails, use default
             this.logLevel = 'info';
         }
-        this.initialized = true;
     }
 
     shouldLog(level) {
@@ -36,27 +32,15 @@ class Logger {
     }
 
     log(...args) {
-        if (this.shouldLog('info')) {
-            console.log(...args);
-        }
+        if (this.shouldLog('info')) console.log(...args);
     }
 
     debug(...args) {
-        if (this.shouldLog('debug')) {
-            console.debug(...args);
-        }
-    }
-
-    info(...args) {
-        if (this.shouldLog('info')) {
-            console.info(...args);
-        }
+        if (this.shouldLog('debug')) console.debug(...args);
     }
 
     warn(...args) {
-        if (this.shouldLog('warn')) {
-            console.warn(...args);
-        }
+        if (this.shouldLog('warn')) console.warn(...args);
     }
 
     error(...args) {
@@ -66,7 +50,6 @@ class Logger {
     }
 }
 
-// Create a global logger instance
 const logger = new Logger();
 
 export class VideoCutterUltra {
@@ -121,41 +104,55 @@ export class VideoCutterUltra {
         }
     }
     
+    showStorageMessage(message, type) {
+        const el = document.getElementById('storage-message');
+        if (!el) return;
+        el.textContent = message;
+        el.style.background = type === 'success' ? '#f0fff4' : type === 'error' ? '#fff5f5' : '#ebf8ff';
+        el.style.color = type === 'success' ? '#276749' : type === 'error' ? '#c53030' : '#2b6cb0';
+        el.style.border = `1px solid ${type === 'success' ? '#9ae6b4' : type === 'error' ? '#feb2b2' : '#90cdf4'}`;
+        el.classList.remove('hidden');
+        clearTimeout(this._storageMessageTimer);
+        this._storageMessageTimer = setTimeout(() => el.classList.add('hidden'), 6000);
+    }
+
     async togglePersistentStorage() {
         const toggle = document.getElementById('persistent-toggle');
-        
+
         if (!('storage' in navigator && 'persist' in navigator.storage)) {
-            this.showError('Persistent storage is not supported in your browser');
+            this.showStorageMessage('Persistent storage is not supported in your browser.', 'error');
             toggle.checked = false;
             return;
         }
-        
+
         if (toggle.checked) {
             try {
                 const granted = await navigator.storage.persist();
                 if (granted) {
                     this.persistentStorage = true;
-                    this.showSuccess('Persistent storage enabled - quota may increase over time');
-                    
-                    // Update storage info after enabling persistent storage
-                    // Small delay to let browser update quota
-                    setTimeout(() => {
-                        this.updateStorageInfo();
-                    }, 500);
+                    this.showStorageMessage('Persistent storage enabled - your videos will not be auto-cleared by the browser.', 'success');
+                    setTimeout(() => this.updateStorageInfo(), 500);
                 } else {
                     this.persistentStorage = false;
                     toggle.checked = false;
-                    this.showError('Browser denied persistent storage request');
+                    // Chromium-based browsers deny silently based on engagement heuristics.
+                    // The quota shown is already at the disk-based maximum regardless.
+                    const isBrave = navigator.brave && await navigator.brave.isBrave().catch(() => false);
+                    if (isBrave) {
+                        this.showStorageMessage('Brave denied persistent storage. Brave caps storage at ~2 GB regardless of persistence.', 'error');
+                    } else {
+                        this.showStorageMessage('Browser denied persistent storage. This browser grants it silently based on site engagement — try again after using the app more.', 'info');
+                    }
                 }
-                } catch (error) {
-                    logger.error('Error requesting persistent storage:', error);
+            } catch (error) {
+                logger.error('Error requesting persistent storage:', error);
                 toggle.checked = false;
-                this.showError('Failed to enable persistent storage');
+                this.showStorageMessage('Failed to enable persistent storage: ' + error.message, 'error');
             }
         } else {
-            this.showInfo('To disable persistent storage, clear your browser data for this site');
+            this.showStorageMessage('To disable persistent storage, clear your browser data for this site.', 'info');
         }
-        
+
         this.updateStorageModeDisplay();
     }
     
@@ -173,13 +170,12 @@ export class VideoCutterUltra {
                 logger.warn('FFmpeg not available, using simulation mode');
                 return;
             }
-            const { createFFmpeg, fetchFile } = window.FFmpeg;
+            const { createFFmpeg } = window.FFmpeg;
             this.ffmpeg = createFFmpeg({
                 log: false,
-                corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+                corePath: `${window.location.origin}/js/vendor/ffmpeg-core.js`,
                 mainName: 'main'
             });
-            this.fetchFile = fetchFile || this.createFetchFileFallback();
             await this.ffmpeg.load();
             this.ffmpegLoaded = true;
         } catch (error) {
@@ -205,26 +201,10 @@ export class VideoCutterUltra {
         }
     }
     
-    
-    createFetchFileFallback() {
-        return async (input) => {
-            if (input instanceof File || input instanceof Blob) {
-                return new Uint8Array(await input.arrayBuffer());
-            }
-            if (typeof input === 'string' && input.startsWith('http')) {
-                const response = await fetch(input);
-                return new Uint8Array(await response.arrayBuffer());
-            }
-            if (input instanceof ArrayBuffer) {
-                return new Uint8Array(input);
-            }
-            throw new Error('Unsupported input type for fetchFile fallback');
-        };
-    }
-    
+
     async initDB() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open('VideoCutterUltraDB', 1);
+            const request = indexedDB.open
             
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
@@ -234,35 +214,21 @@ export class VideoCutterUltra {
             
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
-                
-                // Videos store - now with metadata separation
                 if (!db.objectStoreNames.contains('videos')) {
-                    const videoStore = db.createObjectStore('videos', { 
-                        keyPath: 'id', 
-                        autoIncrement: true 
-                    });
-                    videoStore.createIndex('name', 'name', { unique: false });
-                    videoStore.createIndex('timestamp', 'timestamp', { unique: false });
+                    const s = db.createObjectStore('videos', { keyPath: 'id', autoIncrement: true });
+                    s.createIndex('name', 'name', { unique: false });
+                    s.createIndex('timestamp', 'timestamp', { unique: false });
                 }
-                
-                // Video metadata store (for quick listing)
+                // videoMeta: lightweight listing without loading blob data
                 if (!db.objectStoreNames.contains('videoMeta')) {
-                    const metaStore = db.createObjectStore('videoMeta', { 
-                        keyPath: 'id', 
-                        autoIncrement: true 
-                    });
-                    metaStore.createIndex('name', 'name', { unique: false });
-                    metaStore.createIndex('timestamp', 'timestamp', { unique: false });
+                    const s = db.createObjectStore('videoMeta', { keyPath: 'id', autoIncrement: true });
+                    s.createIndex('name', 'name', { unique: false });
+                    s.createIndex('timestamp', 'timestamp', { unique: false });
                 }
-                
-                // Processed videos store
                 if (!db.objectStoreNames.contains('processed')) {
-                    const processedStore = db.createObjectStore('processed', { 
-                        keyPath: 'id', 
-                        autoIncrement: true 
-                    });
-                    processedStore.createIndex('originalId', 'originalId', { unique: false });
-                    processedStore.createIndex('timestamp', 'timestamp', { unique: false });
+                    const s = db.createObjectStore('processed', { keyPath: 'id', autoIncrement: true });
+                    s.createIndex('originalId', 'originalId', { unique: false });
+                    s.createIndex('timestamp', 'timestamp', { unique: false });
                 }
             };
         });
@@ -273,18 +239,13 @@ export class VideoCutterUltra {
         const videoInput = document.getElementById('video-input');
         const persistentToggle = document.getElementById('persistent-toggle');
         
-        // Upload events
         uploadArea.addEventListener('click', () => videoInput.click());
-        
+
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.classList.add('dragover');
         });
-        
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-        
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
@@ -293,33 +254,25 @@ export class VideoCutterUltra {
                 this.handleVideoUpload(files[0]);
             }
         });
-        
         videoInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                this.handleVideoUpload(e.target.files[0]);
-            }
+            if (e.target.files.length > 0) this.handleVideoUpload(e.target.files[0]);
         });
-        
-        // Persistent storage toggle
+
         persistentToggle.addEventListener('change', () => this.togglePersistentStorage());
-        
-        // Time input events
+
         const startTimeInput = document.getElementById('start-time');
         const endTimeInput = document.getElementById('end-time');
-        
         if (startTimeInput && endTimeInput) {
             startTimeInput.addEventListener('input', () => this.updateTimeline());
             endTimeInput.addEventListener('input', () => this.updateTimeline());
         }
-        
-        // Video player events
+
         const cutPreview = document.getElementById('cut-preview');
         if (cutPreview) {
             cutPreview.addEventListener('timeupdate', () => this.updateTimelineProgress());
             cutPreview.addEventListener('loadedmetadata', () => this.onVideoLoaded());
         }
-        
-        // Timeline events
+
         this.bindTimelineEvents();
     }
     
@@ -330,11 +283,10 @@ export class VideoCutterUltra {
         
         if (!timeline) return;
         
-        // State for dragging
         let isDragging = false;
         let activeHandle = null;
-        
-        // Timeline click to seek
+
+        // Seek on click
         timeline.addEventListener('click', (e) => {
             if (!isDragging && this.selectedVideoId) {
                 const rect = timeline.getBoundingClientRect();
@@ -346,7 +298,6 @@ export class VideoCutterUltra {
             }
         });
         
-        // Handle dragging
         const startDrag = (handle, type) => {
             isDragging = true;
             activeHandle = type;
@@ -385,7 +336,6 @@ export class VideoCutterUltra {
             }
         };
         
-        // Mouse events for handles
         if (handleStart) {
             handleStart.addEventListener('mousedown', () => startDrag(handleStart, 'start'));
         }
@@ -396,7 +346,6 @@ export class VideoCutterUltra {
         document.addEventListener('mousemove', handleDrag);
         document.addEventListener('mouseup', endDrag);
         
-        // Touch events for mobile
         if (handleStart) {
             handleStart.addEventListener('touchstart', () => startDrag(handleStart, 'start'));
         }
@@ -428,14 +377,12 @@ export class VideoCutterUltra {
         uploadStatus.textContent = 'Reading file...';
         
         try {
-            // Check storage space
             const estimate = await navigator.storage.estimate();
             const available = estimate.quota - estimate.usage;
             if (file.size > available * 0.9) {
                 throw new Error(`Not enough storage. Need ${this.formatBytes(file.size)}, have ${this.formatBytes(available)}`);
             }
-            
-            // Read file in chunks to avoid blocking
+
             const arrayBuffer = await this.readFileInChunks(file, (progress) => {
                 const percent = Math.round(progress * 100);
                 progressFill.style.width = percent + '%';
@@ -443,8 +390,7 @@ export class VideoCutterUltra {
             });
             
             uploadStatus.textContent = 'Storing in browser...';
-            
-            // Store metadata separately for faster listing
+
             const metadata = {
                 name: file.name,
                 type: file.type,
@@ -452,10 +398,7 @@ export class VideoCutterUltra {
                 timestamp: new Date().toISOString()
             };
             
-            // Store metadata first
             const metaId = await this.storeVideoMetadata(metadata);
-            
-            // Store actual video data with same ID
             const videoData = {
                 id: metaId,
                 data: arrayBuffer,
@@ -465,18 +408,12 @@ export class VideoCutterUltra {
             await this.storeVideoData(videoData);
             
             logger.log('Stored video with ID:', metaId);
-            
-            // Success
             progressContainer.classList.add('hidden');
             this.showSuccess(`Successfully uploaded ${file.name}`);
-            
-            // Update UI asynchronously
             requestAnimationFrame(() => {
                 this.updateStorageInfo();
                 this.refreshLibrary();
             });
-            
-            // Reset input
             document.getElementById('video-input').value = '';
             
         } catch (error) {
@@ -487,36 +424,25 @@ export class VideoCutterUltra {
     }
     
     async readFileInChunks(file, onProgress) {
-        const chunkSize = 1024 * 1024 * 5; // 5MB chunks
+        const chunkSize = 1024 * 1024 * 5;
         const chunks = [];
         let offset = 0;
-        
+
         while (offset < file.size) {
             const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
-            const arrayBuffer = await chunk.arrayBuffer();
-            chunks.push(new Uint8Array(arrayBuffer));
+            chunks.push(new Uint8Array(await chunk.arrayBuffer()));
             offset += chunkSize;
-            
-            if (onProgress) {
-                // Ensure progress never exceeds 1.0 (100%)
-                const progress = Math.min(1.0, offset / file.size);
-                onProgress(progress);
-            }
-            
-            // Yield to browser to keep UI responsive
-            await new Promise(resolve => setTimeout(resolve, 0));
+            if (onProgress) onProgress(Math.min(1.0, offset / file.size));
+            await new Promise(resolve => setTimeout(resolve, 0)); // yield to keep UI responsive
         }
-        
-        // Combine chunks
-        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+
+        const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
         const result = new Uint8Array(totalLength);
         let position = 0;
-        
         for (const chunk of chunks) {
             result.set(chunk, position);
             position += chunk.length;
         }
-        
         return result.buffer;
     }
     
@@ -574,16 +500,23 @@ export class VideoCutterUltra {
             request.onerror = () => reject(request.error);
         });
     }
-    
+
+    dbCount(storeName) {
+        return new Promise((resolve, reject) => {
+            const request = this.db.transaction([storeName], 'readonly')
+                .objectStore(storeName).count();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     async deleteVideo(id) {
-        // Delete from both stores
         const transaction1 = this.db.transaction(['videos'], 'readwrite');
         const deleteRequest1 = transaction1.objectStore('videos').delete(id);
         
         const transaction2 = this.db.transaction(['videoMeta'], 'readwrite');
         const deleteRequest2 = transaction2.objectStore('videoMeta').delete(id);
         
-        // Wait for both deletions to complete
         await new Promise((resolve, reject) => {
             deleteRequest1.onsuccess = () => {
                 deleteRequest2.onsuccess = () => resolve();
@@ -592,7 +525,6 @@ export class VideoCutterUltra {
             deleteRequest1.onerror = () => reject(deleteRequest1.error);
         });
         
-        // Clear cache
         if (this.videoCache.has(id)) {
             const url = this.videoCache.get(id);
             URL.revokeObjectURL(url);
@@ -607,14 +539,11 @@ export class VideoCutterUltra {
         if (!library) return;
         
         if (metadata.length === 0) {
-            library.innerHTML = '<p style="text-align: center; color: #666;">No videos uploaded yet</p>';
+            library.innerHTML = '<p class="empty-state-msg">No videos uploaded yet</p>';
             return;
         }
         
-        // Clear and rebuild library
         library.innerHTML = '';
-        
-        // Use DocumentFragment for better performance
         const fragment = document.createDocumentFragment();
         
         metadata.forEach(video => {
@@ -644,7 +573,6 @@ export class VideoCutterUltra {
     }
     
     async selectVideo(id) {
-        // Show loading indicator immediately
         const cutInterface = document.getElementById('cut-interface');
         const cutNoVideo = document.getElementById('cut-no-video');
         const selectedVideoName = document.getElementById('selected-video-name');
@@ -655,29 +583,18 @@ export class VideoCutterUltra {
             selectedVideoName.textContent = 'Loading...';
         }
         
-        // Switch to cut tab
         this.switchTab('cut');
         
         try {
-            // Get metadata first (fast)
             const metadata = await this.getVideoMetadata(id);
             if (!metadata) {
                 this.showError('Video not found');
                 return;
             }
-            
             this.selectedVideoId = id;
             this.selectedVideoMeta = metadata;
-            
-            // Update UI with metadata immediately
-            if (selectedVideoName) {
-                selectedVideoName.textContent = metadata.name;
-            }
-            
-            // Update library display
+            if (selectedVideoName) selectedVideoName.textContent = metadata.name;
             await this.refreshLibrary();
-            
-            // Load video data asynchronously
             this.loadVideoForCutting(id);
             
         } catch (error) {
@@ -742,10 +659,13 @@ export class VideoCutterUltra {
     async clearAllVideos() {
         if (!confirm('Delete ALL videos? This cannot be undone!')) return;
 
-        const t1 = this.db.transaction(['videos'], 'readwrite');
-        await t1.objectStore('videos').clear();
-        const t2 = this.db.transaction(['videoMeta'], 'readwrite');
-        await t2.objectStore('videoMeta').clear();
+        await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['videos', 'videoMeta'], 'readwrite');
+            tx.objectStore('videos').clear();
+            tx.objectStore('videoMeta').clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
 
         this.videoCache.forEach(url => URL.revokeObjectURL(url));
         this.videoCache.clear();
@@ -790,7 +710,7 @@ export class VideoCutterUltra {
 
             let cutVideoData;
 
-            if (this.ffmpegLoaded && this.ffmpeg && this.fetchFile) {
+            if (this.ffmpegLoaded && this.ffmpeg) {
                 if (this.ffmpegBusy) {
                     if (cutStatus) cutStatus.textContent = 'Waiting for previous operation...';
                     await new Promise(resolve => setTimeout(resolve, 500));
@@ -922,7 +842,7 @@ export class VideoCutterUltra {
             const modeText = this.ffmpegLoaded ? ' (with FFmpeg)' : ' (simulation)';
             this.showSuccess(`Video cut successfully${modeText}! Check the Processed tab.`);
 
-            // Reinitialize FFmpeg after a cut to ensure a clean state for next operation
+            // Reinitialize after each cut for a clean FFmpeg state
             if (this.ffmpegLoaded && this.ffmpeg) {
                 if (this.ffmpeg.isLoaded?.()) {
                     try { this.ffmpeg.exit(); } catch (e) { /* expected */ }
@@ -987,11 +907,8 @@ export class VideoCutterUltra {
         const endTimeEl = document.getElementById('end-time');
         
         if (video && video.duration && startTimeEl && endTimeEl) {
-            // Set initial values: start at 0, end at full video duration
             startTimeEl.value = this.formatTime(0);
-            endTimeEl.value = this.formatTime(video.duration); // Use full video duration
-            
-            // Force update the timeline visuals
+            endTimeEl.value = this.formatTime(video.duration);
             this.updateTimeline();
         }
     }
@@ -1001,49 +918,31 @@ export class VideoCutterUltra {
         const startTimeEl = document.getElementById('start-time');
         const endTimeEl = document.getElementById('end-time');
         
-        // Early return if elements are missing
         if (!video || !video.duration || !startTimeEl || !endTimeEl) return;
-        
+
         const startTime = this.parseTimeString(startTimeEl.value) || 0;
-        const endTime = this.parseTimeString(endTimeEl.value) || video.duration; // Default to full duration
-        
-        // Ensure percentages are valid
+        const endTime = this.parseTimeString(endTimeEl.value) || video.duration;
         const startPercent = Math.max(0, Math.min(100, (startTime / video.duration) * 100));
         const endPercent = Math.max(0, Math.min(100, (endTime / video.duration) * 100));
-        
-        // Update selection area
+
         const selection = document.getElementById('timeline-selection');
         if (selection) {
             selection.style.left = startPercent + '%';
             selection.style.width = (endPercent - startPercent) + '%';
         }
-        
-        // Update handles
+
         const handleStart = document.getElementById('handle-start');
         const handleEnd = document.getElementById('handle-end');
-        if (handleStart) {
-            handleStart.style.left = startPercent + '%';
-        }
-        if (handleEnd) {
-            handleEnd.style.left = endPercent + '%';
-        }
-        
-        // Update time labels
+        if (handleStart) handleStart.style.left = startPercent + '%';
+        if (handleEnd)   handleEnd.style.left = endPercent + '%';
+
         const timeStart = document.getElementById('time-start');
-        const timeEnd = document.getElementById('time-end');
-        if (timeStart) {
-            timeStart.textContent = this.formatTime(startTime);
-        }
-        if (timeEnd) {
-            timeEnd.textContent = this.formatTime(endTime);
-        }
-        
-        // Update duration
-        const duration = endTime - startTime;
+        const timeEnd   = document.getElementById('time-end');
+        if (timeStart) timeStart.textContent = this.formatTime(startTime);
+        if (timeEnd)   timeEnd.textContent   = this.formatTime(endTime);
+
         const durationEl = document.getElementById('duration');
-        if (durationEl) {
-            durationEl.textContent = this.formatTime(duration);
-        }
+        if (durationEl) durationEl.textContent = this.formatTime(endTime - startTime);
     }
     
     updateTimelineProgress() {
@@ -1062,16 +961,11 @@ export class VideoCutterUltra {
         const startTime = document.getElementById('start-time');
         const endTime = document.getElementById('end-time');
         if (video && startTime && endTime) {
-            // Get the current end time
             const endSeconds = this.parseTimeString(endTime.value) || video.duration;
-            const currentTime = video.currentTime;
-            
-            // Only set as start if it's before the end time
-            if (currentTime < endSeconds) {
-                startTime.value = this.formatTime(currentTime);
+            if (video.currentTime < endSeconds) {
+                startTime.value = this.formatTime(video.currentTime);
                 this.updateTimeline();
             } else {
-                // Show a warning
                 this.showInfo('Start time must be before end time');
             }
         }
@@ -1082,64 +976,51 @@ export class VideoCutterUltra {
         const endTime = document.getElementById('end-time');
         const startTime = document.getElementById('start-time');
         if (video && endTime && startTime) {
-            // Get the current start time
             const startSeconds = this.parseTimeString(startTime.value) || 0;
-            const currentTime = video.currentTime;
-            
-            // Only set as end if it's after the start time
-            if (currentTime > startSeconds) {
-                endTime.value = this.formatTime(currentTime);
+            if (video.currentTime > startSeconds) {
+                endTime.value = this.formatTime(video.currentTime);
                 this.updateTimeline();
             } else {
-                // Show a warning or set to a valid position
                 this.showInfo('End time must be after start time');
             }
         }
     }
     
     formatTime(seconds) {
-        const hours = Math.floor(seconds / 3600);
+        const hours   = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
-        const secs = Math.floor(seconds % 60);
-        // Use 1 decimal place for display but keep full precision
-        const ms = Math.round((seconds % 1) * 10);
-        
+        const secs    = Math.floor(seconds % 60);
+        const ms      = Math.round((seconds % 1) * 10);
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${ms}`;
     }
 
     generateKutName(originalName) {
-    // small built-in dictionary, expand as desired
-    const words = [
-        'apple','banana','cedar','delta','echo','falcon','gizmo','harbor',
-        'island','jupiter','kappa','lima','mango','november','omega','pearl',
-        'quartz','raven','sierra','tango','umbra','vivid','willow','xeno',
-        'yonder','zephyr','fruitybaboon', 'playingwithmymonkey', 'otter', 'bear',
-        'lion', 'tiger', 'eagle', 'shark', 'whale', 'dolphin', 'panda', 'koala',
-        'platypus', 'narwhal', 'unicorn', 'dragon', 'phoenix', 'griffin',
-        'pegasus', 'hydra', 'cerberus', 'minotaur', 'sphinx', 'chimera',
-        'kompound', 'ngk', 'smile', 'happy', 'sunny', 'breezy', 'cloudy', 'stormy'
-    ];
-    const word = words[Math.floor(Math.random() * words.length)];
-    // 5 random digits, leading digit won't be zero
-    const digits = String(Math.floor(10000 + Math.random() * 90000));
-    // preserve extension from original name, default to .mp4
-    const ext = (originalName && originalName.match(/\.[^.]+$/)?.[0]) || '.mp4';
-    return `${word}_${digits}_kut${ext}`;
+        const words = [
+            'apple','banana','cedar','delta','echo','falcon','gizmo','harbor',
+            'island','jupiter','kappa','lima','mango','november','omega','pearl',
+            'quartz','raven','sierra','tango','umbra','vivid','willow','xeno',
+            'yonder','zephyr','fruitybaboon','playingwithmymonkey','otter','bear',
+            'lion','tiger','eagle','shark','whale','dolphin','panda','koala',
+            'platypus','narwhal','unicorn','dragon','phoenix','griffin',
+            'pegasus','hydra','cerberus','minotaur','sphinx','chimera',
+            'kompound','ngk','smile','happy','sunny','breezy','cloudy','stormy'
+        ];
+        const word = words[Math.floor(Math.random() * words.length)];
+        const digits = String(Math.floor(10000 + Math.random() * 90000));
+        const ext = (originalName && originalName.match(/\.[^.]+$/)?.[0]) || '.mp4';
+        return `${word}_${digits}_kut${ext}`;
     }
     
     parseTimeString(timeStr) {
         const parts = timeStr.split(':');
         if (parts.length !== 3) return 0;
-        
-        const hours = parseInt(parts[0]) || 0;
-        const minutes = parseInt(parts[1]) || 0;
+        const hours        = parseInt(parts[0]) || 0;
+        const minutes      = parseInt(parts[1]) || 0;
         const secondsParts = parts[2].split('.');
-        const seconds = parseInt(secondsParts[0]) || 0;
-        const milliseconds = parseInt(secondsParts[1]) || 0;
-        
-        // Handle single decimal place (multiply by 100 to get proper fraction)
-        // e.g., .9 should be 0.9 seconds, not 0.009 seconds
-        return hours * 3600 + minutes * 60 + seconds + milliseconds / 10;
+        const seconds      = parseInt(secondsParts[0]) || 0;
+        const ms           = parseInt(secondsParts[1]) || 0;
+        // single decimal place: .9 = 0.9 s, not 0.009 s
+        return hours * 3600 + minutes * 60 + seconds + ms / 10;
     }
     
     switchTab(tabName) {
@@ -1167,9 +1048,6 @@ export class VideoCutterUltra {
     async updateStorageInfo() {
         try {
             if ('storage' in navigator && 'estimate' in navigator.storage) {
-                // Force a fresh estimate by waiting a moment
-                await new Promise(resolve => setTimeout(resolve, 50));
-                
                 const estimate = await navigator.storage.estimate();
                 const quotaGB = estimate.quota / (1024 * 1024 * 1024);
                 const usedMB = estimate.usage / (1024 * 1024);
@@ -1181,7 +1059,6 @@ export class VideoCutterUltra {
                 
                 if (quotaEl) quotaEl.textContent = `${quotaGB.toFixed(1)} GB`;
                 if (usedEl) {
-                    // Format based on size
                     if (usedMB < 1) {
                         usedEl.textContent = `${(usedMB * 1024).toFixed(1)} KB`;
                     } else if (usedMB < 1024) {
@@ -1193,15 +1070,14 @@ export class VideoCutterUltra {
                 if (availableEl) availableEl.textContent = `${availableGB.toFixed(2)} GB`;
             }
             
-            // Update video count
-            const metadata = await this.getAllVideoMetadata();
+            const [videoCount, processedCount] = await Promise.all([
+                this.dbCount('videoMeta'),
+                this.dbCount('processed')
+            ]);
             const countEl = document.getElementById('video-count');
-            if (countEl) countEl.textContent = metadata.length;
-            
-            // Update processed count
-            const processed = await this.getAllProcessed();
+            if (countEl) countEl.textContent = videoCount;
             const processedCountEl = document.getElementById('processed-count');
-            if (processedCountEl) processedCountEl.textContent = processed.length;
+            if (processedCountEl) processedCountEl.textContent = processedCount;
         } catch (error) {
             logger.error('Error updating storage info:', error);
         }
@@ -1235,16 +1111,12 @@ export class VideoCutterUltra {
         if (countEl) countEl.textContent = processed.length;
         
         if (processed.length === 0) {
-            list.innerHTML = '<p style="text-align: center; color: #666;">No processed videos yet</p>';
+            list.innerHTML = '<p class="empty-state-msg">No processed videos yet</p>';
             return;
         }
         
-        // Clear and rebuild list
         list.innerHTML = '';
-        
-        // Use DocumentFragment for better performance
         const fragment = document.createDocumentFragment();
-        
         processed.forEach(video => {
             const item = document.createElement('li');
             item.className = 'processed-item';
@@ -1287,7 +1159,6 @@ export class VideoCutterUltra {
             a.click();
             document.body.removeChild(a);
             
-            // Clean up blob URL after download
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         } catch (error) {
             logger.error('Error downloading video:', error);
@@ -1303,29 +1174,25 @@ export class VideoCutterUltra {
             const blob = new Blob([video.data], { type: video.type });
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
         } catch (error) {
             logger.error('Error previewing video:', error);
             this.showError('Failed to preview video');
         }
     }
-    
+
     async deleteProcessed(id) {
         if (!confirm('Delete this processed video?')) return;
-        
+
         try {
             const transaction = this.db.transaction(['processed'], 'readwrite');
             const store = transaction.objectStore('processed');
             const deleteRequest = store.delete(id);
             
-            // Wait for deletion to complete
             await new Promise((resolve, reject) => {
                 deleteRequest.onsuccess = () => resolve();
                 deleteRequest.onerror = () => reject(deleteRequest.error);
             });
-            
-            // Force a small delay to ensure database is updated
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
             await this.updateStorageInfo();
             await this.refreshProcessed();
         } catch (error) {
@@ -1338,10 +1205,12 @@ export class VideoCutterUltra {
         if (!confirm('Delete ALL processed videos?')) return;
         
         try {
-            const transaction = this.db.transaction(['processed'], 'readwrite');
-            const store = transaction.objectStore('processed');
-            await store.clear();
-            
+            await new Promise((resolve, reject) => {
+                const tx = this.db.transaction(['processed'], 'readwrite');
+                tx.objectStore('processed').clear();
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
             await this.updateStorageInfo();
             await this.refreshProcessed();
         } catch (error) {
@@ -1354,55 +1223,79 @@ export class VideoCutterUltra {
         const modal = document.getElementById('storage-modal');
         if (modal) {
             modal.classList.add('show');
-            // Update quota details when modal opens
             await this.updateStorageQuotaDetails();
         }
     }
     
+    async detectBrowser() {
+        const ua = navigator.userAgent;
+        const isBrave = navigator.brave && await navigator.brave.isBrave().catch(() => false);
+        if (isBrave) return 'Brave';
+        if (ua.includes('Edg/')) return 'Microsoft Edge';
+        if (ua.includes('Firefox/')) return 'Firefox';
+        if (ua.includes('Chrome/')) return 'Chrome';
+        if (ua.includes('Safari/')) return 'Safari';
+        return 'Unknown';
+    }
+
     async updateStorageQuotaDetails() {
         const quotaDetailsEl = document.getElementById('quota-details');
         if (!quotaDetailsEl) return;
-        
+
         try {
-            if ('storage' in navigator && 'estimate' in navigator.storage) {
-                const estimate = await navigator.storage.estimate();
-                const isPersistent = await navigator.storage.persisted();
-                
-                const quotaGB = (estimate.quota / (1024 * 1024 * 1024)).toFixed(2);
-                const usedMB = (estimate.usage / (1024 * 1024)).toFixed(2);
-                const usedGB = (estimate.usage / (1024 * 1024 * 1024)).toFixed(3);
-                const availableGB = ((estimate.quota - estimate.usage) / (1024 * 1024 * 1024)).toFixed(2);
-                const percentUsed = ((estimate.usage / estimate.quota) * 100).toFixed(2);
-                
-                // Detect browser type
-                let browserInfo = 'Unknown browser';
-                if (navigator.userAgent.includes('Chrome')) {
-                    browserInfo = 'Chrome';
-                } else if (navigator.userAgent.includes('Edg')) {
-                    browserInfo = 'Microsoft Edge';
-                } else if (navigator.userAgent.includes('Firefox')) {
-                    browserInfo = 'Firefox';
-                } else if (navigator.userAgent.includes('Safari')) {
-                    browserInfo = 'Safari';
-                }
-                
-                quotaDetailsEl.innerHTML = `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                        <div><strong>Browser:</strong> ${browserInfo}</div>
-                        <div><strong>Storage Mode:</strong> ${isPersistent ? '<span style="color: #48bb78;">Persistent ✓</span>' : '<span style="color: #f6ad55;">Temporary</span>'}</div>
-                        <div><strong>Quota:</strong> ${quotaGB} GB</div>
-                        <div><strong>Used:</strong> ${usedMB < 1024 ? usedMB + ' MB' : usedGB + ' GB'} (${percentUsed}%)</div>
-                        <div><strong>Available:</strong> ${availableGB} GB</div>
-                        <div><strong>Videos:</strong> ${await this.getVideoCount()}</div>
-                    </div>
-                    ${!isPersistent ? '<p style="margin-top: 0.75rem; padding: 0.5rem; background: #fff5f5; border-left: 3px solid #fff34bff; font-size: 0.85rem;"><strong>Tip:</strong> Enable persistent storage above to prevent data loss and potentially increase quota.</p>' : ''}
-                `;
-                
-                // Also update the main storage display
-                this.updateStorageInfo();
-            } else {
+            if (!('storage' in navigator && 'estimate' in navigator.storage)) {
                 quotaDetailsEl.innerHTML = '<p style="color: #e53e3e;">Storage API not supported in this browser</p>';
+                return;
             }
+
+            const [estimate, isPersistent, browserName] = await Promise.all([
+                navigator.storage.estimate(),
+                navigator.storage.persisted(),
+                this.detectBrowser()
+            ]);
+
+            const quotaGB   = (estimate.quota / (1024 * 1024 * 1024)).toFixed(2);
+            const usedMB    = (estimate.usage / (1024 * 1024)).toFixed(2);
+            const usedGB    = (estimate.usage / (1024 * 1024 * 1024)).toFixed(3);
+            const availGB   = ((estimate.quota - estimate.usage) / (1024 * 1024 * 1024)).toFixed(2);
+            const pctUsed   = ((estimate.usage / estimate.quota) * 100).toFixed(2);
+
+            // Browser-specific note about quota behaviour
+            const isChromium = ['Brave', 'Chrome', 'Microsoft Edge'].includes(browserName);
+            let quotaNote = '';
+            if (browserName === 'Brave') {
+                quotaNote = '<strong>Brave restriction:</strong> Brave enforces a hard ~2 GB per-origin storage cap as a privacy/anti-fingerprinting measure. ' +
+                    'Enabling persistent storage will prevent eviction but cannot increase this cap. ' +
+                    'For large videos, use Firefox instead — it grants significantly more quota when persistence is allowed.';
+            } else if (browserName === 'Microsoft Edge') {
+                quotaNote = `${browserName} sets this quota based on your available disk space. ` +
+                    'Persistent storage prevents eviction but does not change the quota number.';
+            } else if (isChromium) {
+                quotaNote = `${browserName} sets this quota based on your available disk space. ` +
+                    'Persistent storage prevents eviction but does not change the quota number.';
+            } else if (browserName === 'Firefox') {
+                quotaNote = 'Firefox limits quota to ~10% of disk without persistence. ' +
+                    'Enabling persistent storage (and accepting the browser prompt) can significantly increase the available quota.';
+            } else if (browserName === 'Safari') {
+                quotaNote = 'Safari starts with a 1 GB quota and may prompt to increase it when storage is needed.';
+            }
+
+            quotaDetailsEl.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div><strong>Browser:</strong> ${browserName}</div>
+                    <div><strong>Storage Mode:</strong> ${isPersistent
+                        ? '<span style="color: #48bb78;">Persistent</span>'
+                        : '<span style="color: #f6ad55;">Temporary</span>'}</div>
+                    <div><strong>Quota:</strong> ${quotaGB} GB</div>
+                    <div><strong>Used:</strong> ${usedMB < 1024 ? usedMB + ' MB' : usedGB + ' GB'} (${pctUsed}%)</div>
+                    <div><strong>Available:</strong> ${availGB} GB</div>
+                    <div><strong>Videos:</strong> ${await this.getVideoCount()}</div>
+                </div>
+                ${quotaNote ? `<p style="margin-top: 0.75rem; padding: 0.5rem; background: #f0f4ff; border-left: 3px solid #667eea; font-size: 0.85rem;">${quotaNote}</p>` : ''}
+                ${!isPersistent ? '<p style="margin-top: 0.5rem; padding: 0.5rem; background: #fff5f5; border-left: 3px solid #f6ad55; font-size: 0.85rem;"><strong>Tip:</strong> Enable persistent storage above to prevent the browser from auto-clearing your videos.</p>' : ''}
+            `;
+
+            this.updateStorageInfo();
         } catch (error) {
             logger.error('Error getting storage quota details:', error);
             quotaDetailsEl.innerHTML = '<p style="color: #e53e3e;">Error loading storage information</p>';
@@ -1410,12 +1303,7 @@ export class VideoCutterUltra {
     }
     
     async getVideoCount() {
-        try {
-            const metadata = await this.getAllVideoMetadata();
-            return metadata.length;
-        } catch (error) {
-            return 0;
-        }
+        try { return await this.dbCount('videoMeta'); } catch (e) { return 0; }
     }
     
     hideStorageInfo() {
@@ -1465,146 +1353,69 @@ export class VideoCutterUltra {
     }
     
     async clearAllBrowserStorage() {
-        // Confirmation
         const confirmed = confirm(
-            '⚠️ WARNING: Delete ALL Application Data ⚠️\n\n' +
-            'This will permanently DELETE:\n' +
-            '• All uploaded videos\n' +
-            '• All processed/cut videos\n' +
-            '• All metadata and settings\n' +
-            '• Browser cache for this site\n\n' +
-            'This action CANNOT be undone!\n\n' +
-            'Click OK to delete everything.\n' +
-            'Click Cancel to keep your data.'
+            'WARNING: This will permanently delete ALL data stored by this app:\n\n' +
+            '\u2022 All uploaded videos\n' +
+            '\u2022 All processed/cut videos\n' +
+            '\u2022 All settings and metadata\n\n' +
+            'This cannot be undone. Continue?'
         );
-        
         if (!confirmed) return;
-        
+
         try {
-            logger.log('Starting complete browser storage cleanup...');
-            
-            // 1. Clear all blob URLs from cache
-            this.videoCache.forEach(url => {
-                try {
-                    URL.revokeObjectURL(url);
-                } catch (e) {
-                    logger.error('Error revoking blob URL:', e);
-                }
-            });
+            // Revoke in-memory blob URLs
+            this.videoCache.forEach(url => { try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ } });
             this.videoCache.clear();
-            
-            // 2. Clear all IndexedDB stores
+
+            // Close the DB connection first, then delete the database.
+            // Closing before deleteDatabase ensures no open transactions block deletion.
             if (this.db) {
-                try {
-                    // Clear videos store
-                    const transaction1 = this.db.transaction(['videos'], 'readwrite');
-                    await transaction1.objectStore('videos').clear();
-                    
-                    // Clear video metadata store
-                    const transaction2 = this.db.transaction(['videoMeta'], 'readwrite');
-                    await transaction2.objectStore('videoMeta').clear();
-                    
-                    // Clear processed videos store
-                    const transaction3 = this.db.transaction(['processed'], 'readwrite');
-                    await transaction3.objectStore('processed').clear();
-                    
-                    logger.log('Cleared all IndexedDB stores');
-                } catch (e) {
-                    logger.error('Error clearing IndexedDB stores:', e);
-                }
-            }
-            
-            // 3. Delete the entire IndexedDB database
-            try {
                 this.db.close();
-                await new Promise((resolve, reject) => {
-                    const deleteReq = indexedDB.deleteDatabase('VideoCutterUltraDB');
-                    deleteReq.onsuccess = () => {
-                        logger.log('IndexedDB database deleted');
-                        resolve();
-                    };
-                    deleteReq.onerror = () => reject(deleteReq.error);
-                    deleteReq.onblocked = () => {
-                        logger.warn('Database deletion blocked');
-                        resolve(); // Continue anyway
-                    };
-                });
-            } catch (e) {
-                logger.error('Error deleting IndexedDB database:', e);
+                this.db = null;
             }
-            
-            // 4. Clear localStorage if any
-            try {
-                localStorage.clear();
-                logger.log('localStorage cleared');
-            } catch (e) {
-                logger.error('Error clearing localStorage:', e);
-            }
-            
-            // 5. Clear sessionStorage if any
-            try {
-                sessionStorage.clear();
-                logger.log('sessionStorage cleared');
-            } catch (e) {
-                logger.error('Error clearing sessionStorage:', e);
-            }
-            
-            // 6. Clear all caches for this origin
+            await new Promise((resolve) => {
+                const req = indexedDB.deleteDatabase('VideoCutterUltraDB');
+                req.onsuccess = () => resolve();
+                req.onerror   = () => { logger.error('IndexedDB delete error:', req.error); resolve(); };
+                // onblocked fires when another tab still holds a connection.
+                // Resolving here is safe — the DB will be deleted once the other tab closes.
+                req.onblocked = () => { logger.warn('IndexedDB delete blocked (another tab may be open)'); resolve(); };
+            });
+
+            // Web storage
+            try { localStorage.clear(); }   catch (e) { /* ignore */ }
+            try { sessionStorage.clear(); } catch (e) { /* ignore */ }
+
+            // Cache API (Service Worker caches)
             if ('caches' in window) {
-                try {
-                    const cacheNames = await caches.keys();
-                    await Promise.all(
-                        cacheNames.map(cacheName => {
-                            logger.log('Deleting cache:', cacheName);
-                            return caches.delete(cacheName);
-                        })
-                    );
-                    logger.log('All caches cleared');
-                } catch (e) {
-                    logger.error('Error clearing caches:', e);
-                }
+                const names = await caches.keys().catch(() => []);
+                await Promise.all(names.map(n => caches.delete(n)));
             }
-            
-            // 7. Clean up FFmpeg if loaded
+
+            // FFmpeg in-memory filesystem
             if (this.ffmpeg) {
                 try {
-                    // Clean up FFmpeg filesystem
                     const files = this.ffmpeg.FS('readdir', '/');
-                    for (const file of files) {
-                        if (file !== '.' && file !== '..' && file !== 'tmp' && file !== 'home' && file !== 'dev') {
-                            try {
-                                this.ffmpeg.FS('unlink', file);
-                            } catch (e) {
-                                // Ignore
-                            }
+                    const skip = ['.', '..', 'tmp', 'home', 'dev', 'proc'];
+                    for (const f of files) {
+                        if (!skip.includes(f)) {
+                            try { this.ffmpeg.FS('unlink', f); } catch (e) { /* ignore */ }
                         }
                     }
-                    logger.log('FFmpeg filesystem cleaned');
-                } catch (e) {
-                    logger.error('Error cleaning FFmpeg:', e);
-                }
+                } catch (e) { /* ignore */ }
             }
-            
-            // 8. Reset application state
-            this.selectedVideoId = null;
+
+            this.selectedVideoId   = null;
             this.selectedVideoMeta = null;
             this.persistentStorage = false;
-            
-            // 9. Hide modal
             this.hideStorageInfo();
-            
-            // 10. Show success message
-            alert(
-                'All browser storage has been cleared successfully!\n\n' +
-                'The page will now reload to complete the cleanup process.'
-            );
-            
-            // 11. Reload the page to ensure complete cleanup
-            window.location.reload(true); // true forces reload from server, not cache
-            
+
+            alert('All storage cleared. The page will now reload.');
+            window.location.reload();
+
         } catch (error) {
-            logger.error('Error during complete storage cleanup:', error);
-            this.showError('Failed to completely clear storage: ' + error.message);
+            logger.error('Storage clear failed:', error);
+            this.showError('Failed to clear storage: ' + error.message);
         }
     }
 }
