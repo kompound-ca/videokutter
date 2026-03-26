@@ -41,6 +41,7 @@ export class TimelineEditor {
         document.getElementById('te-panel-processed').classList.toggle('hidden', name !== 'processed');
         document.getElementById('te-tab-btn-library').classList.toggle('active', name === 'library');
         document.getElementById('te-tab-btn-processed').classList.toggle('active', name === 'processed');
+        if (name === 'processed') this.clearPlayer();
     }
 
     bindEvents() {
@@ -84,7 +85,7 @@ export class TimelineEditor {
             });
         }
 
-        // Arrow key seeking — left/right seek ±1s
+        // Arrow key seeking — left/right seek one frame (1/30 s)
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             const tag = document.activeElement?.tagName.toLowerCase();
@@ -92,7 +93,8 @@ export class TimelineEditor {
             const vid = document.getElementById('te-preview');
             if (!vid || !vid.duration) return;
             e.preventDefault();
-            vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + (e.key === 'ArrowLeft' ? -1 : 1)));
+            const step = 1 / 30;
+            vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + (e.key === 'ArrowLeft' ? -step : step)));
         });
     }
 
@@ -137,6 +139,12 @@ export class TimelineEditor {
     // ─── Video Loading ────────────────────────────────────────────────────────
 
     async loadVideo(id) {
+        // Clicking Edit on the already-active video collapses the player
+        if (this.selectedVideoId === id) {
+            this.clearPlayer();
+            document.querySelectorAll('.te-video-card').forEach(c => c.classList.remove('active'));
+            return;
+        }
         try {
             const meta = await this.videoDB.getVideoMetadata(id);
             if (!meta) { this.showMessage('Video not found.', 'error', 'te-select-message'); return; }
