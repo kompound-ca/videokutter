@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Kutter</title>
+    <link rel="icon" type="image/svg+xml" href="icon/video-check.svg">
+
+    <!-- Apply preload class to prevent FOUC — remove after first paint (~33ms) -->
+    <script>
+        document.documentElement.classList.add('preload');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            document.documentElement.classList.remove('preload');
+        }));
+    </script>
+
+    <!-- Google Fonts — loaded async so it never blocks page render -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"></noscript>
+
+    <link rel="stylesheet" href="css/browser-cutter.css">
+    <link rel="stylesheet" href="css/timeline-editor.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Video Kutter</h1>
+            <p>Trim multiple segments from your videos — all in your browser, nothing uploaded.</p>
+        </header>
+
+        <div class="card">
+            <!-- Storage status -->
+            <div id="te-storage-notice" class="te-storage-notice hidden"></div>
+
+            <!-- Tabs -->
+            <div class="te-tabs">
+                <button class="te-tab active" id="te-tab-btn-library"   onclick="editor.switchTab('library')">Library</button>
+                <button class="te-tab"        id="te-tab-btn-processed" onclick="editor.switchTab('processed')">Processed Videos</button>
+            </div>
+
+            <!-- Library tab panel -->
+            <div id="te-panel-library" class="te-tab-panel">
+                <div class="te-section">
+                    <h2>Upload Video</h2>
+
+                    <div class="upload-area" id="te-upload-area">
+                        <div class="upload-icon">📁</div>
+                        <p>Drag &amp; drop a video here or click to browse</p>
+                        <p class="upload-info">Supported: MP4, MOV, AVI, MKV, WebM &nbsp;·&nbsp; Stored locally in your browser</p>
+                    </div>
+                    <input type="file" id="te-video-input" accept="video/*" style="display:none">
+
+                    <div class="progress-container hidden" id="te-upload-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="te-upload-progress-fill" style="width:0%">0%</div>
+                        </div>
+                        <p class="progress-status" id="te-upload-status">Uploading...</p>
+                    </div>
+
+                    <h2 style="margin-top:1.5rem">Video Library</h2>
+                    <div class="te-library-header">
+                        <button class="btn btn-secondary" onclick="editor.refreshVideoList()">Refresh</button>
+                    </div>
+                    <div id="te-video-library" class="te-video-library"></div>
+                    <div id="te-select-message" class="hidden"></div>
+                </div>
+            </div>
+
+            <!-- Processed tab panel -->
+            <div id="te-panel-processed" class="te-tab-panel hidden">
+                <div id="te-output-section" class="te-section">
+                    <div class="mb-1">
+                        <button class="btn btn-primary" onclick="editor.refreshOutput()">Refresh</button>
+                        <button class="btn btn-danger"  onclick="editor.clearAllProcessed()">Clear All</button>
+                    </div>
+                    <ul class="processed-list" id="te-output-list"></ul>
+                    <p id="te-output-empty" class="te-library-empty hidden">No processed videos yet.</p>
+                </div>
+            </div>
+
+            <!-- Video Player (outside tabs — full workspace) -->
+            <div id="te-player-section" class="te-section hidden">
+                <div class="mb-1" style="display:flex;align-items:center;gap:1rem">
+                    <span><strong>Editing:</strong> <span id="te-video-name">—</span></span>
+                    <button class="btn btn-danger" onclick="editor.deleteSelectedVideo()" title="Remove this video from your library">Delete Video</button>
+                </div>
+                <video id="te-preview" controls></video>
+
+                <!-- Split Controls (above timeline) -->
+                <div class="te-split-controls">
+                    <button class="btn btn-primary" onclick="editor.addSplitAtCurrentTime()" title="Add a split point at the current playback position">
+                        ✂ Add Split at Current Time
+                    </button>
+                    <button class="btn btn-secondary" onclick="editor.removeLastSplit()" id="te-remove-last-btn" title="Remove the most recently added split point">
+                        ✕ Remove Last Split
+                    </button>
+                </div>
+
+                <!-- Multi-Segment Timeline -->
+                <div class="te-timeline-wrapper">
+                    <div class="te-timeline" id="te-timeline">
+                        <!-- Playhead -->
+                        <div class="te-playhead" id="te-playhead"></div>
+                        <!-- Hover tooltip -->
+                        <div class="te-hover-tooltip" id="te-hover-tooltip"></div>
+                        <!-- Segments rendered here by JS -->
+                    </div>
+                    <div class="te-timeline-labels">
+                        <span id="te-time-start-label">0:00</span>
+                        <span id="te-time-end-label">0:00</span>
+                        <div class="te-help-wrapper">
+                            <button class="te-help-btn" id="te-help-btn" title="Timeline controls">?</button>
+                            <div class="te-help-popover" id="te-help-popover">
+                                <ul>
+                                    <li><strong>Click</strong> timeline to seek</li>
+                                    <li><strong>Double-click segment</strong> to toggle Keep / Skip</li>
+                                    <li><strong>Drag</strong> orange handle to reposition split</li>
+                                    <li><strong>Double-click handle</strong> to remove split</li>
+                                    <li><strong>← →</strong> keys seek ±1s</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Segment List -->
+                <div class="te-segment-list-wrapper">
+                    <h3>Segments</h3>
+                    <table class="te-segment-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Duration</th>
+                                <th>Action</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="te-segment-tbody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Processing Controls -->
+                <div class="te-controls">
+                    <button class="btn btn-success" id="te-process-btn" onclick="editor.processVideo()">
+                        Process Video
+                    </button>
+                    <button class="btn btn-secondary" onclick="editor.resetSegments()">Reset</button>
+                    <span class="te-hint" id="te-keep-summary"></span>
+                </div>
+
+                <div class="progress-container hidden" id="te-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="te-progress-fill">0%</div>
+                    </div>
+                    <p class="progress-status" id="te-progress-status">Processing...</p>
+                </div>
+
+                <div id="te-message" class="hidden"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="dark-mode-toggle" id="dark-mode-toggle" title="Toggle Dark Mode">
+        <span class="icon">☀️</span>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 Kompound Solutions - Video Cutting Tool</p>
+    </footer>
+
+    <!-- Dark Mode JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('dark-mode-toggle');
+            const htmlElement = document.documentElement;
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            htmlElement.setAttribute('data-theme', savedTheme);
+            updateToggleUI(savedTheme);
+            toggle.addEventListener('click', () => {
+                const currentTheme = htmlElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                htmlElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateToggleUI(newTheme);
+            });
+            function updateToggleUI(theme) {
+                const icon = toggle.querySelector('.icon');
+                if (theme === 'dark') {
+                    icon.textContent = '🌙';
+                    toggle.title = 'Switch to Light Mode';
+                } else {
+                    icon.textContent = '☀️';
+                    toggle.title = 'Switch to Dark Mode';
+                }
+            }
+        });
+    </script>
+
+    <script src="/js/vendor/ffmpeg.min.js"></script>
+    <script type="module" src="js/timeline-editor-entry.js"></script>
+</body>
+</html>

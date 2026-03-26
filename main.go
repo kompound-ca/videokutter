@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -50,11 +51,18 @@ func main() {
 		return c.Next()
 	})
 
-	app.Static("/", "./static")
+	app.Static("/", "./static", fiber.Static{
+		Compress:      true,
+		CacheDuration: 10 * time.Second,
+		MaxAge:        86400, // 24 hours — browser skips re-validation for cached assets
+	})
 
-	// Redirect root to browser-cutter.html
+	// Root and legacy Simple Cut URL both serve the timeline editor
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("./static/browser-cutter.html")
+		return c.SendFile("./static/timeline-editor.html")
+	})
+	app.Get("/browser-cutter.html", func(c *fiber.Ctx) error {
+		return c.Redirect("/", fiber.StatusMovedPermanently)
 	})
 
 	// Configuration endpoint
